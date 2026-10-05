@@ -27,7 +27,6 @@ vscode-settings.sh
 .config/direnv/**
 .config/atuin/**
 .local/bin/**
-.local/lib/**
 Code/**
 install-nix-packages.sh
 setup-atuin.sh

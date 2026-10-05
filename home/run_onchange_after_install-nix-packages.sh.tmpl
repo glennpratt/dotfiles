@@ -10,7 +10,10 @@ set -euo pipefail
 
 FLAKE_PATH="{{ .chezmoi.workingTree }}"
 FLAKE_URL="git+file://${FLAKE_PATH}"
-SYNC="${HOME}/.local/lib/dotfiles/nix-profile-sync.sh"
+
+sync() {
+    nix run "${FLAKE_PATH}#profile-sync" -- "$@"
+}
 
 # Entries from earlier layouts: a standalone chezmoi package, and the
 # meta-package when the flake lived in my-packages/.
@@ -19,6 +22,6 @@ while IFS=$'\t' read -r name url; do
         echo "Removing old profile entry ${name} (${url})..."
         nix profile remove "${name}"
     fi
-done < <("${SYNC}" entries)
+done < <(sync entries)
 
-"${SYNC}" sync "${FLAKE_PATH}"
+sync sync "${FLAKE_PATH}"

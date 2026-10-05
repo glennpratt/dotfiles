@@ -1,7 +1,8 @@
 #!/bin/bash
 # Restart Finicky so it picks up config changes (hot reload is unreliable)
 # finicky.js hash: {{ include "dot_finicky.js.tmpl" | sha256sum }}
-{{- range glob (joinPath .chezmoi.destDir ".config/finicky/rules.d/*.js") }}
+{{- $overlays := get . "overlayGlob" | default (joinPath .chezmoi.homeDir ".local/share/chezmoi-*") }}
+{{- range glob (joinPath $overlays "fragments/finicky/*.js") }}
 # {{ base . }} hash: {{ include . | sha256sum }}
 {{- end }}
 

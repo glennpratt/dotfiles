@@ -25,24 +25,37 @@ nix develop github:glennpratt/dotfiles -c chezmoi init --apply glennpratt
 
 Machine- or employer-specific config lives in separate chezmoi sources at
 `~/.local/share/chezmoi-<name>`, applied together by `~/.local/bin/dotfiles`.
-Overlays only add files to these drop-in points; no target is owned by two
-sources (`dotfiles check`).
+Each source applies on its own, in any order. No target is owned by two
+sources (`dotfiles check`). Overlays contribute in two ways.
+
+**Drop-in files** that the overlay deploys, picked up when the tool runs:
 
 | Drop-in | Picked up by |
 | --- | --- |
 | `~/.config/shell/path.d/*.sh`, `rc.d/*.sh` | `~/.config/shell/rc` |
 | `~/.config/git/config.d/work` | `[include]` in git config |
 | `~/.config/direnv/lib/*.sh`, `projects/<host>/<org>/` | direnv |
-| `~/.config/finicky/rules.d/*.js` | `~/.finicky.js` (imported) |
-| `~/.config/Code/User/settings.d/*.json` | VS Code `settings.json` (deep-merged) |
+
+**Fragments** for files with no include mechanism. They sit undeployed at the
+overlay repo root and are read from its checkout when the base renders:
+
+| Fragment | Merged into |
+| --- | --- |
+| `fragments/vscode/*.json` | VS Code `settings.json` (deep merge) |
+| `fragments/finicky/*.js` (one JS array literal of handlers) | `~/.finicky.js` |
 
 An overlay's flake can reuse this one:
 
 ```nix
 inputs.personal.url = "github:glennpratt/dotfiles";
 # ...
-personal.lib.mkProfile pkgs {
+packages.default = personal.lib.mkProfile pkgs {
   name = "extra-packages";
   paths = personal.legacyPackages.${system}.sets.k8s ++ [ pkgs.foo ];
-}
+};
+apps = personal.apps; # profile-sync, for the overlay's run_onchange script
 ```
+
+Its install script then runs
+`nix run <overlay>#profile-sync -- sync <overlay>` to add a second, disjoint
+nix profile entry.

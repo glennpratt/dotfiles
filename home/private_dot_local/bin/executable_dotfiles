@@ -3,9 +3,11 @@
 #
 # Overlays are extra chezmoi sources at ~/.local/share/chezmoi-<name>, with
 # their own config and state in ~/.config/chezmoi-<name>/. They only add files
-# into the base's drop-in dirs; no target may be managed by two sources.
+# into the base's drop-in dirs or fragments/ that base templates read from the
+# overlay checkout; no target may be managed by two sources. Each source
+# applies on its own, so order doesn't matter.
 #
-#   dotfiles apply [args]      overlay files, then base, then overlay scripts
+#   dotfiles apply [args]      apply base and every overlay
 #   dotfiles diff [args]       diff every source
 #   dotfiles update            git pull --ff-only every source, then apply
 #   dotfiles check             fail if a target is managed by two sources
@@ -51,12 +53,7 @@ check() {
 apply() {
     local dir
     check
-    # Overlay files first: base templates (finicky, VS Code) read their drop-ins.
-    for dir in $(overlays); do
-        overlay_chezmoi "${dir}" apply --exclude=scripts "$@"
-    done
     chezmoi apply "$@"
-    # Overlay scripts last: they may use helpers the base installs.
     for dir in $(overlays); do
         overlay_chezmoi "${dir}" apply "$@"
     done

@@ -1,12 +1,11 @@
-#!/bin/bash
 # Keep one nix profile entry per dotfiles flake (base, overlays) in sync.
+# Packaged as the flake app `profile-sync` (writeShellApplication adds the
+# shebang and strict mode):
 #
-#   nix-profile-sync.sh sync <flake-dir>   install or upgrade <flake-dir>#default
-#   nix-profile-sync.sh entries            "name<TAB>original flake URL" per entry
+#   nix run <flake>#profile-sync -- sync <flake-dir>   install/upgrade <flake-dir>#default
+#   nix run <flake>#profile-sync -- entries            "name<TAB>original URL" per entry
 #
 # nix names entries after the flake's directory, so entries are matched by URL.
-
-set -euo pipefail
 
 # Parsed with nix itself: jq may come from the package being replaced.
 profile_entries() {
@@ -30,7 +29,7 @@ sync() {
 }
 
 case "${1:-}" in
-    sync) sync "${2:?usage: $0 sync <flake-dir>}" ;;
+    sync) sync "${2:?usage: profile-sync sync <flake-dir>}" ;;
     entries) profile_entries ;;
-    *) echo "usage: $0 {sync <flake-dir>|entries}" >&2; exit 2 ;;
+    *) echo "usage: profile-sync {sync <flake-dir>|entries}" >&2; exit 2 ;;
 esac

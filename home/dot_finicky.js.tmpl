@@ -1,16 +1,19 @@
 // https://github.com/johnste/finicky/wiki/Configuration-(v4)
-// Overlay rules come from ~/.config/finicky/rules.d/*.js, each doing
-// `export default [ ...handlers ]`. They are matched before the rules below.
-{{- $rules := glob (joinPath .chezmoi.destDir ".config/finicky/rules.d/*.js") }}
-{{ range $i, $f := $rules -}}
-import rules{{ $i }} from {{ $f | quote }};
-{{ end }}
+{{- /*
+  Overlay sources (~/.local/share/chezmoi-*) contribute fragments/finicky/*.js,
+  each a single JS array literal of handlers, inlined here ahead of the rules
+  below. Read from the overlay checkouts, so no apply order is needed.
+*/}}
+{{- $overlays := get . "overlayGlob" | default (joinPath .chezmoi.homeDir ".local/share/chezmoi-*") }}
 export default {
   // No profile: let Chrome open in whatever window/profile was last active
   defaultBrowser: "Google Chrome",
   handlers: [
-{{- range $i, $f := $rules }}
-    ...rules{{ $i }},
+{{- range glob (joinPath $overlays "fragments/finicky/*.js") }}
+    // {{ . | base }} from {{ . | dir | dir | dir | base }}
+    ...(
+      {{ include . | trim | replace "\n" "\n      " }}
+    ),
 {{- end }}
     {
       match: ["mail.google.com/*"],

@@ -57,7 +57,22 @@
             paths = sets.base ++ sets.dev;
           };
           inherit (pkgs) diffx;
+          profile-sync = pkgs.writeShellApplication {
+            name = "profile-sync";
+            runtimeInputs = [ pkgs.gawk ]; # nix itself comes from PATH
+            text = builtins.readFile ./nix/profile-sync.sh;
+          };
         });
+
+      # Used by the run_onchange scripts here and in overlays, so neither
+      # depends on the other having been applied first.
+      apps = forAllSystems (system: pkgs: {
+        profile-sync = {
+          type = "app";
+          program = "${self.packages.${system}.profile-sync}/bin/profile-sync";
+          meta.description = "Install or upgrade a dotfiles flake's nix profile entry";
+        };
+      });
 
       checks = forAllSystems (system: pkgs: {
         profile = self.packages.${system}.default;
