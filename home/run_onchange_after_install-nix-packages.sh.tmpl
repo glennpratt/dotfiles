@@ -1,0 +1,24 @@
+#!/bin/bash
+# Install/upgrade the base nix profile entry when the flake changes
+# flake.nix hash: {{ include (joinPath .chezmoi.workingTree "flake.nix") | sha256sum }}
+# flake.lock hash: {{ include (joinPath .chezmoi.workingTree "flake.lock") | sha256sum }}
+{{- range glob (joinPath .chezmoi.workingTree "nix/**/*.nix") }}
+# {{ base . }} hash: {{ include . | sha256sum }}
+{{- end }}
+
+set -euo pipefail
+
+FLAKE_PATH="{{ .chezmoi.workingTree }}"
+FLAKE_URL="git+file://${FLAKE_PATH}"
+SYNC="${HOME}/.local/lib/dotfiles/nix-profile-sync.sh"
+
+# Entries from earlier layouts: a standalone chezmoi package, and the
+# meta-package when the flake lived in my-packages/.
+while IFS=$'\t' read -r name url; do
+    if [[ "${url}" == "${FLAKE_URL}?dir=my-packages" || ( "${name}" == "chezmoi" && "${url}" != "${FLAKE_URL}" ) ]]; then
+        echo "Removing old profile entry ${name} (${url})..."
+        nix profile remove "${name}"
+    fi
+done < <("${SYNC}" entries)
+
+"${SYNC}" sync "${FLAKE_PATH}"

@@ -1,0 +1,11 @@
+#!/bin/bash
+# Install Finicky (macOS URL/browser router) via Homebrew
+
+{{ if eq .chezmoi.os "darwin" -}}
+set -euo pipefail
+
+if ! brew list --cask finicky &> /dev/null; then
+    echo "Installing Finicky..."
+    brew install --cask finicky
+fi
+{{ end -}}

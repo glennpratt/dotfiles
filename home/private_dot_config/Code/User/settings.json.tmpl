@@ -1,0 +1,11 @@
+{{- /*
+  Fully owned by chezmoi: VS Code UI edits are overwritten on apply, so make
+  changes in .chezmoitemplates/vscode-settings.jsonc (or check `chezmoi diff`
+  first and port anything worth keeping). Overlays add
+  ~/.config/Code/User/settings.d/*.json, deep-merged on top in name order.
+*/ -}}
+{{- $settings := include ".chezmoitemplates/vscode-settings.jsonc" | fromJsonc -}}
+{{- range glob (joinPath .chezmoi.destDir ".config/Code/User/settings.d/*.json") -}}
+{{-   $settings = mergeOverwrite $settings (include . | fromJsonc) -}}
+{{- end -}}
+{{ $settings | toPrettyJson "    " }}

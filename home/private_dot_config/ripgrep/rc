@@ -1,0 +1,5 @@
+# Search hidden/dot directories (e.g. .github, .gitlab)
+--hidden
+
+# But still ignore .git internals
+--glob=!.git/

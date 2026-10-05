@@ -1,0 +1,12 @@
+#!/bin/bash
+# Symlink VS Code settings to macOS-specific path
+# settings.json hash: {{ include ".chezmoitemplates/vscode-settings.jsonc" | sha256sum }}
+
+{{ if eq .chezmoi.os "darwin" -}}
+set -euo pipefail
+
+VSCODE_DIR="${HOME}/Library/Application Support/Code/User"
+mkdir -p "${VSCODE_DIR}"
+ln -sf "${HOME}/.config/Code/User/settings.json" "${VSCODE_DIR}/settings.json"
+echo "VS Code settings symlinked to macOS path"
+{{ end -}}

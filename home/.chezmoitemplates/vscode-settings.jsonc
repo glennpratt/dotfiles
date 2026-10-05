@@ -1,0 +1,120 @@
+{
+    "files.autoSave": "afterDelay",
+    "redhat.telemetry.enabled": true,
+    "git.autofetch": true,
+    "vs-kubernetes": {
+        "vs-kubernetes.crd-code-completion": "disabled"
+    },
+    "editor.formatOnSave": false,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter"
+    },
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+    "diffEditor.ignoreTrimWhitespace": false,
+    "go.toolsManagement.autoUpdate": true,
+    "files.associations": {
+        "**/templates/**/*.yaml": "helm",
+        "**/devbox.json": "jsonc"
+    },
+    "[yaml]": {
+        "editor.insertSpaces": true,
+        "editor.tabSize": 2,
+        "editor.autoIndent": "keep",
+        "diffEditor.ignoreTrimWhitespace": false,
+        "editor.defaultFormatter": "kennylong.kubernetes-yaml-formatter",
+        "editor.formatOnSave": false,
+        "editor.quickSuggestions": {
+            "other": true,
+            "comments": false,
+            "strings": true
+        }
+    },
+    "search.followSymlinks": false,
+    "go.testTags": "test,integration",
+    "go.buildTags": "integration",
+    "editor.minimap.enabled": false,
+    "terminal.integrated.allowChords": false,
+    "github.copilot.nextEditSuggestions.enabled": true,
+    "docker.extension.enableComposeLanguageServer": false,
+    "diffEditor.codeLens": true,
+    "go.gopath": "",
+    "devbox.autoShellOnTerminal": false,
+    "[dockercompose]": {
+        "editor.insertSpaces": true,
+        "editor.tabSize": 2,
+        "editor.autoIndent": "advanced",
+        "editor.quickSuggestions": {
+            "other": true,
+            "comments": false,
+            "strings": true
+        },
+        "editor.defaultFormatter": "redhat.vscode-yaml"
+    },
+    "[github-actions-workflow]": {
+        "editor.defaultFormatter": "redhat.vscode-yaml"
+    },
+    "chat.tools.terminal.autoApprove": {
+        "kustomize": true,
+        "export": true,
+        "kubectl get": true,
+        "jq": true,
+        "select(.spec.template.spec.volumes[]?.persistentVolumeClaim)": true,
+        "\"\\(.metadata.namespace)": true,
+        "kubectl describe": true,
+        "yq": true,
+        "kubectl logs": true,
+        "kubectl top": true,
+        "ruff": true,
+        "kubectl exec": true,
+        "/^python3 -m unittest tests/test_markdown\\.py$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/Users/gpratt/Code/glennpratt/sshred/sshred": true
+    },
+    "githubPullRequests.pullBranch": "never",
+    "chat.agent.maxRequests": 100,
+    "git.detectWorktrees": false,
+    "workbench.view.alwaysShowHeaderActions": true,
+    "python.languageServer": "Pylance",
+    "python.analysis.languageServerMode": "full",
+    "http.systemCertificatesNode": true,
+    "files.readonlyInclude": {
+        "**/*.log": true
+    },
+    "claudeCode.usePythonEnvironment": false,
+    "python-envs.terminal.autoActivationType": "off",
+    "python.terminal.activateEnvironment": false,
+    "python.terminal.shellIntegration.enabled": false,
+    "claudeCode.selectedModel": "default",
+    "geminicodeassist.agentYoloMode": true,
+    "geminicodeassist.updateChannel": "Insiders",
+    "claudeCode.allowDangerouslySkipPermissions": true,
+    "claudeTerminal.command": "bash",
+    "claudeTerminal.directMode": false,
+    "yaml.disableSchemaDetection": [
+        "**/.github/workflows/*.yml",
+        "**/.github/workflows/*.yaml",
+        "**/.gitea/workflows/*.yml",
+        "**/.gitea/workflows/*.yaml",
+        "**/.forgejo/workflows/*.yml",
+        "**/.forgejo/workflows/*.yaml"
+    ],
+    "chat.tools.urls.autoApprove": {
+        "https://code.visualstudio.com": true,
+        "https://github.com/microsoft/vscode/wiki/*": true,
+        "https://github.com": {
+            "approveRequest": false,
+            "approveResponse": true
+        }
+    },
+    "chat.viewSessions.orientation": "stacked",
+    "terminal.integrated.persistentSessionScrollback": 1000,
+    "terminal.integrated.scrollback": 5000,
+    "makefile.configureOnOpen": false,
+    "workbench.editor.editorActionsLocation": "titleBar",
+    "chat.agentsHandoffTip.mode": "hidden",
+    "chat.agentHost.customTerminalTool.enabled": true,
+    "claudeCode.preferredLocation": "panel"
+}

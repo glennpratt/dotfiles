@@ -1,0 +1,12 @@
+# Project-specific direnv configs
+# Configs are organized by directory: <host>/<org>/<repo>/
+# Each project has: config.sh, prod.env, staging.env, etc.
+
+# Ignore all .sh files by default (for backwards compat with flat structure)
+*.sh
+
+# Allow example file
+!example.sh
+
+# Allow all files in subdirectories (directory-based structure)
+!*/**/*

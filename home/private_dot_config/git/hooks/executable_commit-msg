@@ -1,0 +1,13 @@
+#!/bin/sh
+# Reject commits with an AI-agent Co-authored-by trailer, rather than
+# silently stripping it (e.g. as a commit-msg filter would).
+#
+# Add names here to widen/narrow what counts as an "agent".
+agent_pattern='claude|copilot|codex|chatgpt|gpt|cursor|gemini|devin'
+
+matches=$(grep -iE "^Co-authored-by:.*(${agent_pattern})" "$1") || exit 0
+
+echo "error: commit message contains an AI-agent Co-authored-by trailer:" >&2
+echo "$matches" >&2
+echo "Remove it and commit again." >&2
+exit 1

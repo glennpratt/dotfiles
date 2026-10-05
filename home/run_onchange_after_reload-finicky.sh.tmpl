@@ -1,0 +1,20 @@
+#!/bin/bash
+# Restart Finicky so it picks up config changes (hot reload is unreliable)
+# finicky.js hash: {{ include "dot_finicky.js.tmpl" | sha256sum }}
+{{- range glob (joinPath .chezmoi.destDir ".config/finicky/rules.d/*.js") }}
+# {{ base . }} hash: {{ include . | sha256sum }}
+{{- end }}
+
+{{ if eq .chezmoi.os "darwin" -}}
+set -euo pipefail
+
+if pgrep -qx Finicky; then
+    echo "Restarting Finicky to reload config..."
+    killall Finicky
+    # Wait for it to fully quit before relaunching, or `open` can fail with error -600
+    while pgrep -qx Finicky; do
+        sleep 0.2
+    done
+fi
+open -a Finicky
+{{ end -}}

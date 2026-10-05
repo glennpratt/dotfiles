@@ -1,0 +1,27 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Check if atuin is available
+if ! command -v atuin &> /dev/null; then
+    echo "Atuin not found in PATH, skipping daemon setup"
+    exit 0
+fi
+
+# Check if systemctl is available
+if ! command -v systemctl &> /dev/null; then
+    echo "systemctl not found, skipping daemon setup"
+    exit 0
+fi
+
+echo "Setting up Atuin daemon service..."
+
+# The systemd unit file is managed by chezmoi in ~/.config/systemd/user/atuin.service
+
+# Reload systemd to recognize the new unit
+systemctl --user daemon-reload
+
+# Enable and start the service
+systemctl --user enable atuin.service --now
+
+echo "Atuin daemon service set up and started!"

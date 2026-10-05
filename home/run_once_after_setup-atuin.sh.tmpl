@@ -1,0 +1,26 @@
+#!/bin/bash
+# One-time Atuin setup: initialize database and import existing shell history
+
+set -euo pipefail
+
+echo "Setting up Atuin..."
+
+# Check if atuin is available
+if ! command -v atuin &> /dev/null; then
+    echo "Atuin not found in PATH, skipping setup"
+    exit 0
+fi
+
+# Import bash history if it exists
+if [ -f "$HOME/.bash_history" ]; then
+    echo "Importing bash history..."
+    atuin import bash || echo "Warning: bash history import failed or already imported"
+fi
+
+# Import zsh history if it exists
+if [ -f "$HOME/.zsh_history" ]; then
+    echo "Importing zsh history..."
+    atuin import zsh || echo "Warning: zsh history import failed or already imported"
+fi
+
+echo "Atuin setup complete!"

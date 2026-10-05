@@ -1,0 +1,35 @@
+# Patterns match *target* paths (relative to $HOME). Scripts match by their
+# target name, i.e. the source name minus run_*/after_ prefixes and .tmpl.
+
+{{ if ne .chezmoi.os "linux" }}
+.config/systemd/**
+setup-atuin-daemon.sh
+{{ end }}
+
+{{ if ne .chezmoi.os "darwin" }}
+.finicky.js
+.config/finicky/**
+install-finicky.sh
+reload-finicky.sh
+vscode-settings.sh
+{{ end }}
+
+{{ if eq .chezmoi.os "windows" }}
+# POSIX shell, direnv, atuin and nix tooling don't apply to native Windows
+.bashrc
+.bash_profile
+.blerc
+.profile
+.zprofile
+.zshenv
+.zshrc
+.config/shell/**
+.config/direnv/**
+.config/atuin/**
+.local/bin/**
+.local/lib/**
+Code/**
+install-nix-packages.sh
+setup-atuin.sh
+warn-stray-gitconfig.sh
+{{ end }}

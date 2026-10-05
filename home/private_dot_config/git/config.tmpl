@@ -1,0 +1,30 @@
+# This is Git's per-user configuration file.
+[user]
+	name = {{ .name }}
+	email = {{ .email }}
+	signingkey = ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICszvd2pzRWp9xHig4od/kz8ifDEOyuwjpJ0fxAI64KS
+[gpg]
+	format = ssh
+[gpg "ssh"]
+	allowedSignersFile = ~/.ssh/allowed_signers
+[include]
+    path = config.gpg
+[commit]
+	gpgsign = true
+[safe]
+	directory = *
+[core]
+	hooksPath = ~/.config/git/hooks
+[url "git@github.com:"]
+    insteadOf = "https://github.com/"
+[alias]
+    stashgrep = "!f() { for i in `git stash list --format=\"%gd\"` ; \
+              do git stash show -p $i | grep -H --label=\"$i\" \"$@\" ; done ; }; f"
+	stash-untracked = !git ls-files --others --exclude-standard | xargs -r git stash push -u --
+    wt = "!~/.config/git/git-wt.sh"
+    code-clone = "!~/.config/git/git-code-clone.sh"
+[init]
+	defaultBranch = main
+# Drop-ins from overlays (e.g. work). Missing files are silently ignored.
+[include]
+	path = config.d/work

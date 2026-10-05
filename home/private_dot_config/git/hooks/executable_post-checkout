@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Git post-checkout hook: set up new worktrees for direnv
+# - copy .envrc.local from another worktree
+# - carry over the main worktree's direnv approval for an identical .envrc
+set -euo pipefail
+
+PREV_HEAD="${1:-}"
+NEW_HEAD="${2:-}"
+CHECKOUT_TYPE="${3:-}"
+
+# Only run on branch/worktree checkout (1), not individual file checkouts (0)
+if [[ "${CHECKOUT_TYPE}" != "1" ]]; then
+    exit 0
+fi
+
+# Initial checkout in a new worktree (or clone) has previous HEAD as all zeros
+if ! [[ "${PREV_HEAD}" =~ ^0+$ ]]; then
+    exit 0
+fi
+
+# Ensure git is available and we are inside a worktree
+if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+    exit 0
+fi
+
+GIT_DIR="$(git rev-parse --path-format=absolute --git-dir 2>/dev/null)"
+GIT_COMMON_DIR="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+
+# In a linked worktree, GIT_DIR and GIT_COMMON_DIR differ.
+# If they are identical, this is a standard clone or primary checkout, not a linked worktree.
+if [[ "${GIT_DIR}" == "${GIT_COMMON_DIR}" ]]; then
+    exit 0
+fi
+
+CURRENT_WT="$(git rev-parse --show-toplevel 2>/dev/null)"
+MAIN_WT="$(git worktree list --porcelain 2>/dev/null | head -n 1 | sed 's/^worktree //')"
+
+copy_envrc_local() {
+    # If .envrc.local already exists in the new worktree, do not overwrite
+    if [[ -f "${CURRENT_WT}/.envrc.local" ]]; then
+        return 0
+    fi
+
+    # Locate the source repository worktree containing .envrc.local
+    local source_file="" line wt
+    if [[ -n "${MAIN_WT}" && "${MAIN_WT}" != "${CURRENT_WT}" && -f "${MAIN_WT}/.envrc.local" ]]; then
+        source_file="${MAIN_WT}/.envrc.local"
+    else
+        # Fallback for bare repos or setups where .envrc.local is in another active worktree
+        while IFS= read -r line; do
+            if [[ "${line}" =~ ^worktree\ (.*)$ ]]; then
+                wt="${BASH_REMATCH[1]}"
+                if [[ "${wt}" != "${CURRENT_WT}" && -f "${wt}/.envrc.local" ]]; then
+                    source_file="${wt}/.envrc.local"
+                    break
+                fi
+            fi
+        done < <(git worktree list --porcelain 2>/dev/null)
+    fi
+
+    if [[ -n "${source_file}" ]]; then
+        cp "${source_file}" "${CURRENT_WT}/.envrc.local"
+        echo "Copied .envrc.local to ${CURRENT_WT}"
+    fi
+}
+
+# Carry over the main worktree's direnv approval, but only for content that was
+# already approved there: the new .envrc must be byte-identical to the main
+# worktree's, and that one must currently be allowed. A branch that changes
+# .envrc stays blocked for review.
+allow_envrc() {
+    local new_rc="${CURRENT_WT}/.envrc" main_rc="${MAIN_WT}/.envrc"
+    command -v direnv &>/dev/null || return 0
+    [[ -n "${MAIN_WT}" && "${MAIN_WT}" != "${CURRENT_WT}" ]] || return 0
+    [[ -f "${new_rc}" && -f "${main_rc}" ]] || return 0
+    cmp -s "${new_rc}" "${main_rc}" || return 0
+
+    # "Found RC allowed": 0 = allowed, 1 = not allowed, 2 = denied
+    local status found_path found_allowed
+    status="$(cd "${MAIN_WT}" && direnv status 2>/dev/null)" || return 0
+    found_path="$(awk '/^Found RC path /{sub(/^Found RC path /, ""); print}' <<<"${status}")"
+    found_allowed="$(awk '/^Found RC allowed /{print $4}' <<<"${status}")"
+    [[ "${found_path}" == "$(cd "${MAIN_WT}" && pwd -P)/.envrc" && "${found_allowed}" == "0" ]] || return 0
+
+    direnv allow "${CURRENT_WT}"
+    echo "Allowed .envrc in ${CURRENT_WT} (identical to approved ${main_rc})"
+}
+
+copy_envrc_local
+allow_envrc
+
+exit 0

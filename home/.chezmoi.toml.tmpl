@@ -1,0 +1,12 @@
+{{- /* Per-machine data. Re-run `chezmoi init` after editing this file. */ -}}
+{{- $name := promptStringOnce . "name" "Full name for git" "Glenn Pratt" -}}
+{{- $email := promptStringOnce . "email" "Default git email" "glennpratt@gmail.com" -}}
+{{- $isWSL := and (eq .chezmoi.os "linux") (.chezmoi.kernel.osrelease | lower | contains "microsoft") -}}
+
+[data]
+name = {{ $name | quote }}
+email = {{ $email | quote }}
+isDarwin = {{ eq .chezmoi.os "darwin" }}
+isLinux = {{ eq .chezmoi.os "linux" }}
+isWindows = {{ eq .chezmoi.os "windows" }}
+isWSL = {{ $isWSL }}

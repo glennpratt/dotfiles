@@ -1,0 +1,12 @@
+#invert = true
+update_check = false
+
+filter_mode_shell_up_key_binding = "session"
+
+{{ if eq .chezmoi.os "linux" -}}
+[daemon]
+enabled = true
+autostart = false
+# Use the default socket path
+# socket_path = "~/.local/share/atuin/atuin.sock"
+{{ end -}}

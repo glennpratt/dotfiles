@@ -1,0 +1,23 @@
+// https://github.com/johnste/finicky/wiki/Configuration-(v4)
+// Overlay rules come from ~/.config/finicky/rules.d/*.js, each doing
+// `export default [ ...handlers ]`. They are matched before the rules below.
+{{- $rules := glob (joinPath .chezmoi.destDir ".config/finicky/rules.d/*.js") }}
+{{ range $i, $f := $rules -}}
+import rules{{ $i }} from {{ $f | quote }};
+{{ end }}
+export default {
+  // No profile: let Chrome open in whatever window/profile was last active
+  defaultBrowser: "Google Chrome",
+  handlers: [
+{{- range $i, $f := $rules }}
+    ...rules{{ $i }},
+{{- end }}
+    {
+      match: ["mail.google.com/*"],
+      browser: {
+        name: "Google Chrome",
+        profile: "Glenn", // glennpratt@gmail.com
+      },
+    },
+  ],
+};

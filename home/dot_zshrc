@@ -1,0 +1,22 @@
+if [[ -n "${ZSH_PROFILE:-}" ]]; then
+  zmodload zsh/zprof
+fi
+
+bindkey -e
+
+HISTFILE=~/.zsh_history
+HISTSIZE=999999999
+SAVEHIST=$HISTSIZE
+
+setopt INTERACTIVE_COMMENTS
+
+. ~/.config/shell/rc
+
+# Starship: newline between commands
+# https://github.com/starship/starship/issues/560
+precmd() { precmd() { echo "" } }
+alias clear="precmd() { precmd() { echo } } && clear"
+
+if [[ -n "${ZSH_PROFILE:-}" ]]; then
+  zprof
+fi

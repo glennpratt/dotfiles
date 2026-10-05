@@ -1,0 +1,3 @@
+# Sourced before /etc/zprofile, which is where macOS runs path_helper.
+# ~/.zprofile uses this snapshot to undo path_helper's PATH reordering.
+__PATH_BEFORE_PATH_HELPER="$PATH"

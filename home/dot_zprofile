@@ -1,0 +1,10 @@
+# macOS /etc/zprofile runs path_helper, which rebuilds PATH with the system
+# directories first and appends whatever we inherited. For a login shell started
+# inside a nix devshell (VS Code terminals, tmux), that puts /usr/bin ahead of
+# the devshell's bin dirs. If PATH was already built for this session, keep the
+# order we inherited -- it already contains everything path_helper would add.
+if [ -n "${__SHELL_PATH_SET:-}" ] && [ -n "${__PATH_BEFORE_PATH_HELPER:-}" ]; then
+  PATH="$__PATH_BEFORE_PATH_HELPER"
+fi
+
+. ~/.profile

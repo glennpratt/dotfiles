@@ -1,0 +1,6 @@
+# Only build PATH once per session; nested shells inherit it already, and
+# re-prepending would push these ahead of a direnv/nix devshell.
+if [ -z "${__SHELL_PATH_SET:-}" ]; then
+  [ -f /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
+  export PATH="$HOME/.local/bin:$PATH"
+fi

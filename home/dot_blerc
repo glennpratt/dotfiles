@@ -1,0 +1,29 @@
+# Minimal ble.sh configuration for atuin compatibility
+# We only need ble.sh for preexec hooks, so disable most features
+
+# Keep core editing features enabled (completion, syntax highlighting, etc.)
+# These are enabled by default, just documented here for clarity
+
+# Disable visual bells
+bleopt vbell_default_message=
+
+# Disable line limits that could cause hangs and prevent truncation
+bleopt line_limit_type=none
+bleopt line_limit_length=0
+
+# Disable markers to reduce output interference
+bleopt exec_errexit_mark=
+bleopt exec_elapsed_mark=
+bleopt prompt_eol_mark=
+
+# Disable rulers
+bleopt prompt_ruler=
+
+# Disable right prompts
+bleopt prompt_rps1=
+bleopt prompt_rps1_final=
+bleopt prompt_rps1_transient=
+
+# Keep terminal titles disabled
+bleopt prompt_xterm_title=
+bleopt prompt_screen_title=

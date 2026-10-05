@@ -1,0 +1,19 @@
+set -o emacs
+
+HISTFILE=~/.bash_history
+HISTSIZE=999999999
+HISTFILESIZE=$HISTSIZE
+
+. ~/.config/shell/rc
+
+# Starship: newline between commands
+# https://github.com/starship/starship/issues/560
+_starship_newline_first=true
+_starship_newline() {
+  if [ "$_starship_newline_first" = true ]; then
+    _starship_newline_first=false
+  else
+    echo ""
+  fi
+}
+PROMPT_COMMAND="_starship_newline${PROMPT_COMMAND:+;$PROMPT_COMMAND}"

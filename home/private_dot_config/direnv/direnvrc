@@ -1,0 +1,381 @@
+#!/usr/bin/env bash
+# direnvrc - Load per-project configuration based on git origin URL
+
+# Load nix-direnv
+if [ -e "$HOME/.nix-profile/share/nix-direnv/direnvrc" ]; then
+    source "$HOME/.nix-profile/share/nix-direnv/direnvrc"
+elif [ -e "/run/current-system/sw/share/nix-direnv/direnvrc" ]; then
+    source "/run/current-system/sw/share/nix-direnv/direnvrc"
+elif [ -e "/nix/var/nix/profiles/default/share/nix-direnv/direnvrc" ]; then
+    source "/nix/var/nix/profiles/default/share/nix-direnv/direnvrc"
+fi
+
+# Rebuild devshell caches only when a watched file's content changes, not on
+# every mtime bump (git branch switches, tools rewriting files unchanged).
+# From the glennpratt/nix-direnv fork (flake input) until it lands upstream.
+if declare -F nix_direnv_watch_content >/dev/null; then
+    nix_direnv_watch_content
+fi
+
+# Function to convert git origin URL to directory path
+# Example: git@github.com:org/repo.git → github.com/org/repo
+get_project_path() {
+    local origin_url="$1"
+
+    # Remove protocol (https://, git@, etc.)
+    local path="${origin_url#*://}"
+    path="${path#*@}"
+
+    # Replace colon with slash (for git@host:org/repo format)
+    path="${path/:/\/}"
+
+    # Remove .git suffix if present
+    path="${path%.git}"
+
+    echo "$path"
+}
+
+# Run 'op inject' on a template file, bounded to 60s where a timeout is available.
+# macOS has neither GNU 'timeout' nor 'gtimeout' unless coreutils is installed
+# (or a flake devshell puts it on PATH), so fall back to running unbounded.
+# Note: 'op inject' needs -i for a file; a plain '< file' redirect is not
+# recognized as stdin data by op on macOS.
+op_inject_file() {
+    local env_file="$1"
+    if command -v timeout &>/dev/null; then
+        timeout 60s op inject -i "$env_file"
+    elif command -v gtimeout &>/dev/null; then
+        gtimeout 60s op inject -i "$env_file"
+    else
+        op inject -i "$env_file"
+    fi
+}
+
+# Helper to cache 'op inject' results in memory (Linux only)
+# Uses memfd_create via python3 to store secrets in RAM
+# This persists across direnv reloads because the keeper process remains alive
+op_inject_cached() {
+    local env_file="$1"
+    if [[ ! -f "$env_file" ]]; then
+        return 1
+    fi
+
+    # Ensure dependencies are available
+    if ! command -v sha256sum &>/dev/null || ! command -v python3 &>/dev/null; then
+        op_inject_file "$env_file"
+        return $?
+    fi
+
+    # Unique identifier based on absolute path, command, and file content
+    local abs_path
+    abs_path=$(realpath "$env_file")
+
+    # We include the command name in the key to avoid collisions between different tools
+    local cmd_name="op-inject"
+    local path_id
+    path_id=$(echo -n "$abs_path" | sha256sum | awk '{print $1}' | cut -c1-16)
+    local content_hash
+    content_hash=$(sha256sum "$env_file" | awk '{print $1}' | cut -c1-16)
+
+    # The keeper name identifies this specific command, file path, and content
+    local keeper_name="keeper-${cmd_name}-${path_id}-${content_hash}${DIRENV_OP_CACHE_SIMULATE:+-sim}"
+    # The pattern for discovery/cleanup of OLD versions of this file's cache
+    local keeper_pattern="keeper-${cmd_name}-${path_id}-"
+
+    # Ensure pgrep is available
+    if ! command -v pgrep &>/dev/null; then
+        log_status "Error: 'pgrep' not found in PATH. Caching requires 'pgrep' (from procps)."
+        return 1
+    fi
+
+    # Search for an existing keeper for this specific content
+    local keeper_pid
+    keeper_pid=$(pgrep -u "$(id -u)" -f "^${keeper_name}(\s|$)" | head -n 1)
+
+    if [[ -n "$keeper_pid" ]]; then
+        # Find the memfd in the keeper's file descriptors
+        local fd
+        fd=$(ls -l "/proc/$keeper_pid/fd/" 2>/dev/null | grep "memfd:op_cache" | awk '{print $9}' | head -n 1)
+        if [[ -n "$fd" ]]; then
+            log_status "Using cached 1Password secrets for $(basename "$env_file") (PID: $keeper_pid)"
+            if [[ "${DIRENV_OP_CACHE_SIMULATE:-}" == "1" ]]; then
+                touch "/tmp/direnv-op-cache-hit-$(id -un)-${path_id}"
+            fi
+            cat "/proc/$keeper_pid/fd/$fd"
+            return 0
+        fi
+        log_status "Cache found but inaccessible for $(basename "$env_file"), refreshing..."
+        kill "$keeper_pid" 2>/dev/null
+    fi
+
+    # Clean up ANY old keepers for this specific file path (even if content differed)
+    local old_pids
+    old_pids=$(pgrep -u "$(id -u)" -f "^${keeper_pattern}")
+    if [[ -n "$old_pids" ]]; then
+        kill $old_pids 2>/dev/null
+    fi
+
+    log_status "Injecting 1Password secrets for $(basename "$env_file")..."
+    # Perform the injection with a 60s timeout
+    local injected
+    if [[ "${DIRENV_OP_CACHE_SIMULATE:-}" == "1" ]]; then
+        # Create a trace file for the simulation to verify the cache is being bypassed
+        touch "/tmp/direnv-op-cache-inject-$(id -un)-${path_id}"
+        injected=$(cat "$env_file")
+    else
+        if ! injected=$(op_inject_file "$env_file"); then
+            log_status "Warning: 'op inject -i \"$env_file\"' status $?"
+            return 1
+        fi
+        # Safety check: if secrets are still op:// references, treat as failure
+        if [[ "$injected" == *"op://"* ]]; then
+            log_status "Error: 1Password injection succeeded but secret references (op://) remain"
+            return 1
+        fi
+    fi
+
+    # Start new keeper in background
+    local keeper_script="${XDG_CONFIG_HOME:-$HOME/.config}/direnv/keeper.py"
+    if [[ ! -f "$keeper_script" ]]; then
+        keeper_script="$(dirname "${BASH_SOURCE[0]}")/keeper.py"
+    fi
+
+    # Redirect stderr to a log file for debugging if it fails to start.
+    # We use a subshell ( ... ) & to further isolate the background process.
+    # Pass secrets via here-string (<<<) instead of echo pipe to avoid
+    # leaking secret values in /proc/PID/cmdline.
+    (
+        nohup bash -c "exec -a \"$keeper_name\" python3 \"$keeper_script\"" <<< "$injected" >/dev/null 2> "${XDG_STATE_HOME:-$HOME/.local/state}/direnv-keeper.log"
+    ) &
+
+    # Give the keeper a moment to initialize
+    sleep 0.5
+
+    echo "$injected"
+}
+
+# Helper to cache 'op inject' results in the login keychain (macOS only)
+# op authorizes per terminal session, so every new shell (agent terminals,
+# VS Code windows) would otherwise prompt for Touch ID and pay ~3s of op.
+# Entries are keyed by template path and refreshed when the template changes or
+# after DIRENV_OP_CACHE_TTL seconds (default 12h, op's own authorization cap).
+# Any process running as you can read them without a prompt -- the same exposure
+# as the environment variables they produce.
+# Clear all: while security delete-generic-password -s direnv-op-cache; do :; done
+op_inject_keychain_cached() {
+    local env_file="$1"
+    if [[ ! -f "$env_file" ]]; then
+        return 1
+    fi
+
+    local security=/usr/bin/security service=direnv-op-cache
+    local ttl="${DIRENV_OP_CACHE_TTL:-43200}"
+    local abs_path path_id content_hash now
+    abs_path=$(realpath "$env_file")
+    path_id=$(printf '%s' "$abs_path" | shasum -a 256 | cut -c1-16)
+    content_hash=$(shasum -a 256 < "$env_file" | cut -c1-16)
+    now=$(date +%s)
+
+    # Item "<path_id>.0" holds "<content_hash> <created> <chunks>", items
+    # "<path_id>.1".."<path_id>.N" the base64 payload. Values go through
+    # 'security -i' on stdin because arguments show up in ps, and it truncates
+    # lines at ~4KB, hence the chunks.
+    local header hash="" created="" n="" i chunk payload=""
+    if header=$("$security" find-generic-password -s "$service" -a "$path_id.0" -w 2>/dev/null); then
+        read -r hash created n <<< "$header"
+        if [[ "$hash" == "$content_hash" && "$created" =~ ^[0-9]+$ && "$n" =~ ^[0-9]+$ ]] &&
+           (( n > 0 && now - created < ttl )); then
+            for (( i = 1; i <= n; i++ )); do
+                if ! chunk=$("$security" find-generic-password -s "$service" -a "$path_id.$i" -w 2>/dev/null); then
+                    payload=""
+                    break
+                fi
+                payload+="$chunk"
+            done
+            if [[ -n "$payload" ]]; then
+                log_status "Using cached 1Password secrets for $(basename "$env_file") (keychain)"
+                printf '%s' "$payload" | /usr/bin/base64 -d
+                return 0
+            fi
+        fi
+    fi
+
+    log_status "Injecting 1Password secrets for $(basename "$env_file")..."
+    local injected
+    if ! injected=$(op_inject_file "$env_file"); then
+        log_status "Warning: 'op inject -i \"$env_file\"' status $?"
+        return 1
+    fi
+    # Safety check: if secrets are still op:// references, treat as failure
+    if [[ "$injected" == *"op://"* ]]; then
+        log_status "Error: 1Password injection succeeded but secret references (op://) remain"
+        return 1
+    fi
+
+    # Write payload chunks first and the header last, so a reader never sees a
+    # header pointing at a partial payload.
+    local b64 cmds="" chunk_size=2800 label="direnv op cache: $(basename "$env_file")"
+    b64=$(printf '%s' "$injected" | /usr/bin/base64 | tr -d '\n')
+    n=$(( (${#b64} + chunk_size - 1) / chunk_size ))
+    for (( i = 1; i <= n; i++ )); do
+        cmds+="add-generic-password -U -s $service -a $path_id.$i -l \"$label\" -w \"${b64:$(( (i - 1) * chunk_size )):$chunk_size}\""$'\n'
+    done
+    cmds+="add-generic-password -U -s $service -a $path_id.0 -l \"$label\" -j \"$abs_path\" -w \"$content_hash $now $n\""$'\n'
+    if ! printf '%s' "$cmds" | "$security" -i >/dev/null 2>&1; then
+        log_status "Warning: failed to write keychain cache for $(basename "$env_file")"
+    fi
+    # Drop leftover chunks from an earlier, larger payload
+    i=$(( n + 1 ))
+    while "$security" delete-generic-password -s "$service" -a "$path_id.$i" >/dev/null 2>&1; do
+        i=$(( i + 1 ))
+    done
+
+    printf '%s\n' "$injected"
+}
+
+# Function to load environment variant files from direnv config
+# Usage: load_env_variant [default_variant]
+# Looks for .env-variant file, defaults to "prod" or specified default
+# Loads env file from ~/.config/direnv/projects/<host>/<org>/<repo>/<variant>.env
+# Uses 1Password 'op inject' to resolve secrets at runtime (cached in RAM)
+load_env_variant() {
+    local default_variant="${1:-prod}"
+    local variant_file=".env-variant"
+    local variant="$default_variant"
+
+    # Priority: DIRENV_ENV_VARIANT env var > .env-variant file > default
+    if [[ -n "${DIRENV_ENV_VARIANT:-}" ]]; then
+        variant="$DIRENV_ENV_VARIANT"
+    elif [[ -f "$variant_file" ]]; then
+        variant=$(cat "$variant_file" | tr -d '[:space:]')
+    fi
+
+    # Export the current variant
+    export ENV_VARIANT="$variant"
+
+    local org_path
+    local project_path
+
+    # Check if DIRENV_ORG_PATH is set (bypasses git check)
+    if [[ -n "${DIRENV_ORG_PATH:-}" ]]; then
+        org_path="$DIRENV_ORG_PATH"
+    else
+        # Get project path from git origin
+        local origin_url
+        origin_url=$(git config --get remote.origin.url 2>/dev/null)
+        if [[ -z "$origin_url" ]]; then
+            return
+        fi
+
+        project_path=$(get_project_path "$origin_url")
+        # Extract org path (everything except the last component)
+        org_path="${project_path%/*}"
+    fi
+
+    # Check for env file at org level first, then project level
+    local env_file
+    local org_env_file="${XDG_CONFIG_HOME:-$HOME/.config}/direnv/projects/${org_path}/${variant}.env"
+    local project_env_file="${XDG_CONFIG_HOME:-$HOME/.config}/direnv/projects/${project_path}/${variant}.env"
+
+    if [[ -f "$org_env_file" ]]; then
+        env_file="$org_env_file"
+        log_status "Loading environment variant: $variant (org-level)"
+    elif [[ -f "$project_env_file" ]]; then
+        env_file="$project_env_file"
+        log_status "Loading environment variant: $variant (project-level)"
+    fi
+
+    if [[ -n "$env_file" ]]; then
+        # Use 1Password 'op inject' to resolve secret references
+        if command -v op &>/dev/null; then
+            local injected
+            # Opt-in to caching: login keychain on macOS, in-memory on Linux
+            if [[ "${DIRENV_USE_OP_CACHE:-}" == "1" ]] && [[ "$(uname)" == "Darwin" ]]; then
+                if injected=$(op_inject_keychain_cached "$env_file"); then
+                    eval "$injected"
+                else
+                    log_status "Warning: 'op_inject_keychain_cached \"$env_file\"' status $?"
+                    exit 1
+                fi
+            elif [[ "${DIRENV_USE_OP_CACHE:-}" == "1" ]] && command -v python3 &>/dev/null && [[ "$(uname)" == "Linux" ]]; then
+                if injected=$(op_inject_cached "$env_file"); then
+                    eval "$injected"
+                else
+                    log_status "Warning: 'op_inject_cached \"$env_file\"' status $?"
+                    exit 1
+                fi
+            else
+                # Default: no caching (with 60s timeout where available)
+                if injected=$(op_inject_file "$env_file"); then
+                    eval "$injected"
+                else
+                    log_status "Warning: 'op inject -i \"$env_file\"' status $?"
+                    exit 1
+                fi
+            fi
+        else
+            # Fallback: source directly (secrets won't be resolved)
+            log_status "Warning: 1Password CLI not found, loading env file without secret injection"
+            source "$env_file"
+        fi
+    fi
+}
+
+# Helper function to switch environment variants
+# Usage: switch_env_variant <variant>
+# Creates/updates .env-variant file and reloads direnv
+switch_env_variant() {
+    local variant="$1"
+    if [[ -z "$variant" ]]; then
+        echo "Usage: switch_env_variant <variant>"
+        echo "Example: switch_env_variant staging"
+        return 1
+    fi
+
+    echo "$variant" > .env-variant
+    echo "Switched to variant: $variant"
+}
+
+# Function to load project-specific config based on git origin
+load_project_config() {
+    local org_path
+    local project_path
+
+    # Check if DIRENV_ORG_PATH is set (for non-git directories)
+    if [[ -n "${DIRENV_ORG_PATH:-}" ]]; then
+        org_path="$DIRENV_ORG_PATH"
+    # Otherwise check if we're in a git repository
+    elif git rev-parse --git-dir &>/dev/null; then
+        # Get the git origin URL
+        local origin_url
+        origin_url=$(git config --get remote.origin.url 2>/dev/null)
+
+        if [[ -z "$origin_url" ]]; then
+            return
+        fi
+
+        # Convert URL to project path
+        project_path=$(get_project_path "$origin_url")
+
+        # Extract org path (everything except the last component)
+        org_path="${project_path%/*}"
+    else
+        return
+    fi
+
+    # Check for config at org level first, then project level
+    local org_config="${XDG_CONFIG_HOME:-$HOME/.config}/direnv/projects/${org_path}/config.sh"
+    local project_config="${XDG_CONFIG_HOME:-$HOME/.config}/direnv/projects/${project_path}/config.sh"
+
+    # Load org-level config if it exists
+    if [[ -f "$org_config" ]]; then
+        log_status "Loading org config: $org_config"
+        source "$org_config"
+    fi
+
+    # Load project-level config if it exists (can override org-level)
+    if [[ -f "$project_config" ]]; then
+        log_status "Loading project config: $project_config"
+        source "$project_config"
+    fi
+}

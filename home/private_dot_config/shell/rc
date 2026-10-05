@@ -1,0 +1,70 @@
+# Aliases
+alias k=kubectl
+alias p=printenv
+
+# Environment
+export EDITOR=vim
+export RIPGREP_CONFIG_PATH="$HOME/.config/ripgrep/rc"
+
+# Source every readable *.sh in a drop-in dir (overlays such as work add files
+# here). nullglob keeps zsh from erroring on an empty dir.
+__source_dropins() {
+  [ -d "$1" ] || return 0
+  [ -n "${ZSH_VERSION:-}" ] && setopt localoptions nullglob
+  for __f in "$1"/*.sh; do
+    [ -r "$__f" ] && . "$__f"
+  done
+  unset __f
+  return 0
+}
+
+# PATH additions -- guarded so nested shells don't re-prepend these ahead of a
+# direnv/nix devshell. Marks PATH as built for ~/.profile and ~/.zprofile too.
+if [ -z "${__SHELL_PATH_SET:-}" ]; then
+  export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
+  export PATH="$HOME/.antigravity/antigravity/bin:$PATH"
+  __source_dropins "$HOME/.config/shell/path.d"
+  export __SHELL_PATH_SET=1
+fi
+
+# Fix SSH agent forwarding for tmux/VS Code via a static symlink
+if [ -n "$SSH_AUTH_SOCK" ] && [ "$SSH_AUTH_SOCK" != "$HOME/.ssh/ssh_auth_sock" ]; then
+    rm -f "$HOME/.ssh/ssh_auth_sock"
+    ln -sf "$SSH_AUTH_SOCK" "$HOME/.ssh/ssh_auth_sock"
+fi
+export SSH_AUTH_SOCK="$HOME/.ssh/ssh_auth_sock"
+
+# Shell-aware tool init
+if [ -n "$ZSH_VERSION" ]; then
+  _current_shell=zsh
+  zstyle ':completion:*' rehash true
+elif [ -n "$BASH_VERSION" ]; then
+  _current_shell=bash
+  # Load ble.sh for bash (provides preexec hooks for atuin)
+  if [ -f ~/.nix-profile/share/blesh/ble.sh ]; then
+    source ~/.nix-profile/share/blesh/ble.sh --noattach
+  fi
+fi
+
+eval "$(direnv hook $_current_shell)"
+eval "$(starship init $_current_shell)"
+eval "$(atuin init $_current_shell)"
+unset _current_shell
+
+# Unset DEVELOPER_DIR if it points to a non-existent Nix store path (stale from parent env)
+if [ -n "${DEVELOPER_DIR:-}" ] && [ ! -d "${DEVELOPER_DIR}" ]; then
+  unset DEVELOPER_DIR
+fi
+
+# Agent terminals: surface a blocked .envrc inside command output (zsh only)
+if [ -n "${ZSH_VERSION:-}" ] && [ -n "${AI_AGENT:-}" ] && [ -r "$HOME/.config/shell/agent.zsh" ]; then
+  . "$HOME/.config/shell/agent.zsh"
+fi
+
+# Overlay drop-ins (aliases, env, functions)
+__source_dropins "$HOME/.config/shell/rc.d"
+
+# Attach ble.sh at the end (bash only)
+if [ -n "$BASH_VERSION" ]; then
+  [[ ${BLE_VERSION-} ]] && ble-attach
+fi

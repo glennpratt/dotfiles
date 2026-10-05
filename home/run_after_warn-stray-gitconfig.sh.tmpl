@@ -1,0 +1,12 @@
+#!/bin/bash
+# Warn if ~/.gitconfig exists: it's not managed by chezmoi (only
+# ~/.config/git/config is), but git reads both, so settings can silently
+# diverge between the two.
+
+set -euo pipefail
+
+if [ -f "$HOME/.gitconfig" ]; then
+    echo "warning: ~/.gitconfig exists and is not managed by chezmoi." >&2
+    echo "  git also reads ~/.config/git/config (chezmoi-managed); settings can diverge." >&2
+    echo "  Consider merging ~/.gitconfig into the chezmoi source and removing it." >&2
+fi

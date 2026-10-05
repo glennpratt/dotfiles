@@ -1,0 +1,88 @@
+#!/bin/bash
+# Apply the personal chezmoi source plus any overlays (e.g. a private work repo).
+#
+# Overlays are extra chezmoi sources at ~/.local/share/chezmoi-<name>, with
+# their own config and state in ~/.config/chezmoi-<name>/. They only add files
+# into the base's drop-in dirs; no target may be managed by two sources.
+#
+#   dotfiles apply [args]      overlay files, then base, then overlay scripts
+#   dotfiles diff [args]       diff every source
+#   dotfiles update            git pull --ff-only every source, then apply
+#   dotfiles check             fail if a target is managed by two sources
+#   dotfiles <name> <args>     run chezmoi against one overlay, e.g.
+#                              `dotfiles work add ~/.config/foo`
+#
+# Bootstrap an overlay:
+#   git clone <url> ~/.local/share/chezmoi-<name> && dotfiles apply
+
+set -euo pipefail
+
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}"
+
+overlays() {
+    local d
+    for d in "${DATA_DIR}"/chezmoi-*/; do
+        [[ -e "${d}.git" ]] && basename "${d}"
+    done
+    return 0
+}
+
+overlay_chezmoi() {
+    local dir="$1"
+    shift
+    chezmoi --source "${DATA_DIR}/${dir}" --config "${CONFIG_DIR}/${dir}/chezmoi.toml" "$@"
+}
+
+check() {
+    local dir dupes
+    local base_list
+    base_list="$(chezmoi managed --include=files,symlinks | sort)"
+    for dir in $(overlays); do
+        dupes="$(comm -12 <(echo "${base_list}") <(overlay_chezmoi "${dir}" managed --include=files,symlinks | sort))"
+        if [[ -n "${dupes}" ]]; then
+            echo "dotfiles: targets managed by both base and ${dir}:" >&2
+            echo "${dupes}" >&2
+            return 1
+        fi
+    done
+}
+
+apply() {
+    local dir
+    check
+    # Overlay files first: base templates (finicky, VS Code) read their drop-ins.
+    for dir in $(overlays); do
+        overlay_chezmoi "${dir}" apply --exclude=scripts "$@"
+    done
+    chezmoi apply "$@"
+    # Overlay scripts last: they may use helpers the base installs.
+    for dir in $(overlays); do
+        overlay_chezmoi "${dir}" apply "$@"
+    done
+}
+
+cmd="${1:-apply}"
+[[ $# -gt 0 ]] && shift
+
+case "${cmd}" in
+    apply) apply "$@" ;;
+    diff)
+        chezmoi diff "$@"
+        for dir in $(overlays); do overlay_chezmoi "${dir}" diff "$@"; done
+        ;;
+    update)
+        chezmoi git -- pull --ff-only
+        for dir in $(overlays); do git -C "${DATA_DIR}/${dir}" pull --ff-only; done
+        apply
+        ;;
+    check) check ;;
+    *)
+        if [[ -e "${DATA_DIR}/chezmoi-${cmd}/.git" ]]; then
+            overlay_chezmoi "chezmoi-${cmd}" "$@"
+        else
+            echo "dotfiles: unknown command or overlay '${cmd}'" >&2
+            exit 2
+        fi
+        ;;
+esac
