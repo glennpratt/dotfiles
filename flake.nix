@@ -57,6 +57,13 @@
             paths = sets.base ++ sets.dev;
           };
           inherit (pkgs) diffx;
+          dotfiles = pkgs.writeShellApplication {
+            name = "dotfiles";
+            # Everything the script calls, pinned by this flake's lock. Run
+            # scripts that chezmoi starts still see the rest of PATH (nix, brew).
+            runtimeInputs = with pkgs; [ chezmoi coreutils git gnugrep openssh ];
+            text = builtins.readFile ./nix/dotfiles.sh;
+          };
           profile-sync = pkgs.writeShellApplication {
             name = "profile-sync";
             runtimeInputs = [ pkgs.gawk ]; # nix itself comes from PATH
@@ -67,6 +74,11 @@
       # Used by the run_onchange scripts here and in overlays, so neither
       # depends on the other having been applied first.
       apps = forAllSystems (system: pkgs: {
+        dotfiles = {
+          type = "app";
+          program = "${self.packages.${system}.dotfiles}/bin/dotfiles";
+          meta.description = "Apply, diff, pull and push the base and overlay chezmoi sources";
+        };
         profile-sync = {
           type = "app";
           program = "${self.packages.${system}.profile-sync}/bin/profile-sync";
@@ -82,12 +94,12 @@
 
       devShells = forAllSystems (system: pkgs: {
         default = pkgs.mkShellNoCC {
-          packages = with pkgs; [
+          packages = (with pkgs; [
             chezmoi
             git
             shellcheck
             shfmt
-          ];
+          ]) ++ [ self.packages.${system}.dotfiles ];
         };
       });
     };

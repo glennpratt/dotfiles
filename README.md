@@ -24,7 +24,10 @@ nix develop github:glennpratt/dotfiles -c chezmoi init --apply glennpratt
 ## Overlays
 
 Machine- or employer-specific config lives in separate chezmoi sources at
-`~/.local/share/chezmoi-<name>`, applied together by `~/.local/bin/dotfiles`.
+`~/.local/share/chezmoi-<name>`, managed together by the `dotfiles` flake app
+(`nix/dotfiles.sh`: apply, diff, status, pull, push, git). Its tools are pinned
+by this flake; `~/.local/bin/dotfiles` is a shim that `nix run`s it from the
+local checkout, and both repos' devshells provide it directly.
 Each source applies on its own, in any order. No target is owned by two
 sources (`dotfiles check`). Overlays contribute in two ways.
 
