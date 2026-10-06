@@ -2,7 +2,7 @@
 # Install/upgrade the base nix profile entry when the flake changes
 # flake.nix hash: {{ include (joinPath .chezmoi.workingTree "flake.nix") | sha256sum }}
 # flake.lock hash: {{ include (joinPath .chezmoi.workingTree "flake.lock") | sha256sum }}
-{{- range glob (joinPath .chezmoi.workingTree "nix/**/*.nix") }}
+{{- range concat (glob (joinPath .chezmoi.workingTree "nix/**/*.nix")) (glob (joinPath .chezmoi.workingTree "nix/**/*.sh")) }}
 # {{ base . }} hash: {{ include . | sha256sum }}
 {{- end }}
 

@@ -5,7 +5,8 @@
   #   nix develop github:glennpratt/dotfiles -c chezmoi init --apply glennpratt
   #
   # chezmoi (and the git it clones with) come from this flake's lock. Overlays
-  # (e.g. a private work repo) are applied alongside with ~/.local/bin/dotfiles.
+  # (e.g. a private work repo) are applied alongside by `dotfiles` (in the base
+  # package set; before that, `nix run github:glennpratt/dotfiles#dotfiles`).
   #
   # packages.default (nix/sets.nix via lib.mkProfile) is installed into the nix
   # profile by home/run_onchange_after_install-nix-packages.sh.tmpl. The dev
@@ -56,14 +57,7 @@
           default = self.lib.mkProfile pkgs {
             paths = sets.base ++ sets.dev;
           };
-          inherit (pkgs) diffx;
-          dotfiles = pkgs.writeShellApplication {
-            name = "dotfiles";
-            # Everything the script calls, pinned by this flake's lock. Run
-            # scripts that chezmoi starts still see the rest of PATH (nix, brew).
-            runtimeInputs = with pkgs; [ chezmoi coreutils git gnugrep openssh ];
-            text = builtins.readFile ./nix/dotfiles.sh;
-          };
+          inherit (pkgs) diffx dotfiles;
           profile-sync = pkgs.writeShellApplication {
             name = "profile-sync";
             runtimeInputs = [ pkgs.gawk ]; # nix itself comes from PATH
@@ -99,7 +93,7 @@
             git
             shellcheck
             shfmt
-          ]) ++ [ self.packages.${system}.dotfiles ];
+          ]) ++ [ pkgs.dotfiles ];
         };
       });
     };

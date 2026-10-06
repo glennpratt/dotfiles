@@ -1,9 +1,10 @@
 # Manage the personal chezmoi source plus any overlays (e.g. a private work
 # repo) together, from any directory.
 #
-# Packaged as the flake app `dotfiles` (writeShellApplication adds the shebang
-# and strict mode, and puts the pinned tools below first on PATH). The
-# ~/.local/bin/dotfiles shim runs it with `nix run`.
+# Packaged by nix/overlay.nix with writeShellApplication (which adds the shebang
+# and strict mode, and puts pinned tools first on PATH). Installed via the base
+# package set, provided by both repos' devshells, and runnable before either as
+# `nix run github:glennpratt/dotfiles#dotfiles -- apply`.
 #
 # Overlays are extra chezmoi sources at ~/.local/share/chezmoi-<name>, with
 # their own config and state in ~/.config/chezmoi-<name>/. They only add files

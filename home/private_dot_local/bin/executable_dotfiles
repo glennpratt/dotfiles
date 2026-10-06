@@ -1,5 +1,0 @@
-#!/bin/sh
-# Runs the `dotfiles` app from the local base checkout, so its tools (chezmoi,
-# git, ssh, ...) come from that flake's lock rather than PATH. Inside either
-# repo's direnv/devshell, `dotfiles` is already the pinned build.
-exec nix run "${DOTFILES_FLAKE:-${XDG_DATA_HOME:-$HOME/.local/share}/chezmoi}#dotfiles" -- "$@"

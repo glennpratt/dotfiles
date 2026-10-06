@@ -26,8 +26,8 @@ nix develop github:glennpratt/dotfiles -c chezmoi init --apply glennpratt
 Machine- or employer-specific config lives in separate chezmoi sources at
 `~/.local/share/chezmoi-<name>`, managed together by the `dotfiles` flake app
 (`nix/dotfiles.sh`: apply, diff, status, pull, push, git). Its tools are pinned
-by this flake; `~/.local/bin/dotfiles` is a shim that `nix run`s it from the
-local checkout, and both repos' devshells provide it directly.
+by this flake. It is in the `base` package set and both repos' devshells; before
+the profile exists, use `nix run github:glennpratt/dotfiles#dotfiles -- apply`.
 Each source applies on its own, in any order. No target is owned by two
 sources (`dotfiles check`). Overlays contribute in two ways.
 

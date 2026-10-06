@@ -17,6 +17,7 @@ in
     blesh
     chezmoi
     direnv
+    dotfiles
     gh
     git
     gnupg
