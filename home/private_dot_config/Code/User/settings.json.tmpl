@@ -3,13 +3,14 @@
   changes in .chezmoitemplates/vscode-settings.jsonc (or check `chezmoi diff`
   first and port anything worth keeping).
 
-  Overlay sources (~/.local/share/chezmoi-*) contribute fragments/vscode/*.json,
-  read straight from their checkouts and deep-merged on top, so no apply order
-  is needed. Set data `overlayGlob` to point elsewhere (e.g. in tests).
+  Registered overlays (.chezmoitemplates/overlay-dirs) contribute
+  fragments/vscode/*.json, read straight from their checkouts and deep-merged
+  on top, so no apply order is needed.
 */ -}}
-{{- $overlays := get . "overlayGlob" | default (joinPath .chezmoi.homeDir ".local/share/chezmoi-*") -}}
 {{- $settings := include ".chezmoitemplates/vscode-settings.jsonc" | fromJsonc -}}
-{{- range glob (joinPath $overlays "fragments/vscode/*.json") -}}
-{{-   $settings = mergeOverwrite $settings (include . | fromJsonc) -}}
+{{- range includeTemplate "overlay-dirs" . | splitList "\n" | compact -}}
+{{-   range glob (joinPath . "fragments/vscode/*.json") -}}
+{{-     $settings = mergeOverwrite $settings (include . | fromJsonc) -}}
+{{-   end -}}
 {{- end -}}
 {{ $settings | toPrettyJson "    " }}

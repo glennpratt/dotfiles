@@ -3,49 +3,106 @@
 #
 # Packaged by nix/overlay.nix with writeShellApplication (which adds the shebang
 # and strict mode, and puts pinned tools first on PATH). Installed via the base
-# package set, provided by both repos' devshells, and runnable before either as
-# `nix run github:glennpratt/dotfiles#dotfiles -- apply`.
+# package set and provided by both repos' devshells.
 #
-# Overlays are extra chezmoi sources at ~/.local/share/chezmoi-<name>, with
-# their own config and state in ~/.config/chezmoi-<name>/. They only add files
-# into the base's drop-in dirs or fragments/ that base templates read from the
-# overlay checkout; no target may be managed by two sources. Each source
-# applies on its own, so order doesn't matter.
+# Repos are checked out like `git code-clone` does: ~/Code/<host>/<path>.
+# Overlays are extra chezmoi sources registered in ~/.config/dotfiles/overlays
+# ("<name> <dir>" per line), each with its own config and state in
+# ~/.config/chezmoi-<name>/. They only add files into the base's drop-in dirs
+# or fragments/ that base templates read from the overlay checkout; no target
+# may be managed by two sources. Each source applies on its own, in any order.
 #
-#   dotfiles apply [args]      apply base and every overlay
-#   dotfiles diff [args]       chezmoi diff every source
-#   dotfiles status            git and chezmoi status of every source
-#   dotfiles pull              git pull --ff-only every repo
-#   dotfiles push [args]       git push every repo (base guarded, see below)
-#   dotfiles update            pull, then apply
-#   dotfiles git <args>        run git in every repo, e.g. `dotfiles git log -3`
-#   dotfiles check             fail if a target is managed by two sources
-#   dotfiles <name> <args>     run chezmoi against one overlay, e.g.
-#                              `dotfiles work add ~/.config/foo`
+#   dotfiles init [url]              clone the base (default: glennpratt/dotfiles),
+#                                    chezmoi init --apply it
+#   dotfiles overlay add <name> <url>  clone and register an overlay
+#   dotfiles overlay list            registered overlays
+#   dotfiles apply [args]            apply base and every overlay
+#   dotfiles diff [args]             chezmoi diff every source
+#   dotfiles status                  git and chezmoi status of every source
+#   dotfiles pull                    git pull --ff-only every repo
+#   dotfiles push [args]             git push every repo (base guarded, see below)
+#   dotfiles update                  pull, then apply
+#   dotfiles git <args>              run git in every repo, e.g. `dotfiles git log -3`
+#   dotfiles check                   fail if a target is managed by two sources
+#   dotfiles <name> <args>           run chezmoi against one overlay, e.g.
+#                                    `dotfiles work add ~/.config/foo`
+#
+# Bootstrap with nothing but nix:
+#   nix run github:glennpratt/dotfiles#dotfiles -- init
+#   dotfiles overlay add work <url> && dotfiles apply
 #
 # The base repo is public. Before pushing it, `push` greps its tree and
 # outgoing commit metadata for the patterns (extended regexes, `\b` allowed,
-# one per line, case-insensitive) in each overlay's .dotfiles-denylist, so the patterns
-# themselves never live in the base.
-#
-# Bootstrap an overlay:
-#   git clone <url> ~/.local/share/chezmoi-<name> && dotfiles apply
+# one per line, case-insensitive) in each overlay's .dotfiles-denylist, so the
+# patterns themselves never live in the base.
 
-DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}"
+CODE_DIR="${DOTFILES_CODE_DIR:-$HOME/Code}"
+REGISTRY="${CONFIG_DIR}/dotfiles/overlays"
+BASE_URL="https://github.com/glennpratt/dotfiles.git"
+
+die() {
+    echo "dotfiles: $*" >&2
+    exit 1
+}
+
+# ~/Code/<host>/<path> for a remote URL, as `git code-clone` lays it out.
+code_path() {
+    local url="$1" host path
+    if [[ "${url}" =~ ^git@([^:]+):(.+)$ ]]; then
+        host="${BASH_REMATCH[1]}" path="${BASH_REMATCH[2]}"
+    elif [[ "${url}" =~ ^ssh://([^@]+@)?([^:/]+)(:[0-9]+)?/(.+)$ ]]; then
+        host="${BASH_REMATCH[2]}" path="${BASH_REMATCH[4]}"
+    elif [[ "${url}" =~ ^https?://([^/]+)/(.+)$ ]]; then
+        host="${BASH_REMATCH[1]}" path="${BASH_REMATCH[2]}"
+    else
+        die "cannot parse remote URL: ${url}"
+    fi
+    echo "${CODE_DIR}/${host}/${path%.git}"
+}
+
+clone() {
+    local url="$1" dir="$2"
+    if [[ -e "${dir}/.git" ]]; then
+        echo "Already cloned: ${dir}"
+    else
+        mkdir -p "$(dirname "${dir}")"
+        git clone "${url}" "${dir}"
+    fi
+}
+
+# "<name> <dir>" for each registered overlay.
+registry() {
+    [[ -r "${REGISTRY}" ]] || return 0
+    grep -vE '^[[:space:]]*(#|$)' "${REGISTRY}" || true
+}
 
 overlays() {
-    local d
-    for d in "${DATA_DIR}"/chezmoi-*/; do
-        [[ -e "${d}.git" ]] && basename "${d}"
-    done
-    return 0
+    local name dir
+    while read -r name dir; do
+        if [[ -e "${dir}/.git" ]]; then
+            echo "${name}"
+        else
+            echo "dotfiles: overlay ${name}: ${dir} is not a git checkout, skipping" >&2
+        fi
+    done < <(registry)
+}
+
+overlay_dir() {
+    local name dir
+    while read -r name dir; do
+        if [[ "${name}" == "$1" ]]; then
+            echo "${dir}"
+            return 0
+        fi
+    done < <(registry)
+    return 1
 }
 
 overlay_chezmoi() {
-    local dir="$1"
+    local name="$1"
     shift
-    chezmoi --source "${DATA_DIR}/${dir}" --config "${CONFIG_DIR}/${dir}/chezmoi.toml" "$@"
+    chezmoi --source "$(overlay_dir "${name}")" --config "${CONFIG_DIR}/chezmoi-${name}/chezmoi.toml" "$@"
 }
 
 base_repo() {
@@ -54,10 +111,10 @@ base_repo() {
 
 # Base repo first, then overlays.
 repos() {
-    local dir
+    local name
     base_repo
-    for dir in $(overlays); do
-        echo "${DATA_DIR}/${dir}"
+    for name in $(overlays); do
+        overlay_dir "${name}"
     done
 }
 
@@ -74,14 +131,34 @@ each_repo() {
     done < <(repos)
 }
 
+init() {
+    local url="${1:-${BASE_URL}}" dir
+    dir="$(code_path "${url}")"
+    clone "${url}" "${dir}"
+    # The base's .chezmoi.toml.tmpl records sourceDir, so plain `chezmoi` finds it.
+    chezmoi init --source "${dir}" --apply
+}
+
+overlay_add() {
+    local name="${1:?usage: dotfiles overlay add <name> <url>}" url="${2:?usage: dotfiles overlay add <name> <url>}" dir
+    [[ "${name}" =~ ^[A-Za-z0-9_-]+$ ]] || die "overlay name must be [A-Za-z0-9_-]+: ${name}"
+    overlay_dir "${name}" >/dev/null && die "overlay ${name} is already registered"
+    dir="$(code_path "${url}")"
+    clone "${url}" "${dir}"
+    mkdir -p "$(dirname "${REGISTRY}")" "${CONFIG_DIR}/chezmoi-${name}"
+    echo "${name} ${dir}" >> "${REGISTRY}"
+    printf 'sourceDir = "%s"\n' "${dir}" > "${CONFIG_DIR}/chezmoi-${name}/chezmoi.toml"
+    echo "Registered overlay ${name} at ${dir}; run \`dotfiles apply\`."
+}
+
 check() {
-    local dir dupes
+    local name dupes
     local base_list
     base_list="$(chezmoi managed --include=files,symlinks | sort)"
-    for dir in $(overlays); do
-        dupes="$(comm -12 <(echo "${base_list}") <(overlay_chezmoi "${dir}" managed --include=files,symlinks | sort))"
+    for name in $(overlays); do
+        dupes="$(comm -12 <(echo "${base_list}") <(overlay_chezmoi "${name}" managed --include=files,symlinks | sort))"
         if [[ -n "${dupes}" ]]; then
-            echo "dotfiles: targets managed by both base and ${dir}:" >&2
+            echo "dotfiles: targets managed by both base and ${name}:" >&2
             echo "${dupes}" >&2
             return 1
         fi
@@ -89,33 +166,35 @@ check() {
 }
 
 apply() {
-    local dir
+    local name
     check
     chezmoi apply "$@"
-    for dir in $(overlays); do
-        overlay_chezmoi "${dir}" apply "$@"
+    for name in $(overlays); do
+        overlay_chezmoi "${name}" apply "$@"
     done
 }
 
 status() {
-    local dir
+    local name
     header "$(base_repo)"
     git -C "$(base_repo)" status --short --branch
     chezmoi status
-    for dir in $(overlays); do
-        header "${DATA_DIR}/${dir}"
-        git -C "${DATA_DIR}/${dir}" status --short --branch
-        overlay_chezmoi "${dir}" status
+    for name in $(overlays); do
+        header "$(overlay_dir "${name}")"
+        git -C "$(overlay_dir "${name}")" status --short --branch
+        overlay_chezmoi "${name}" status
     done
 }
 
 # Fail if the base repo's tree or unpushed commit metadata matches any overlay
 # denylist pattern.
 guard_public() {
-    local repo patterns hits range
+    local repo patterns="" hits range name
     repo="$(base_repo)"
-    patterns="$(cat "${DATA_DIR}"/chezmoi-*/.dotfiles-denylist 2>/dev/null |
-        grep -vE '^[[:space:]]*(#|$)' || true)"
+    for name in $(overlays); do
+        patterns+="$(cat "$(overlay_dir "${name}")/.dotfiles-denylist" 2>/dev/null || true)"$'\n'
+    done
+    patterns="$(echo "${patterns}" | grep -vE '^[[:space:]]*(#|$)' || true)"
     [[ -n "${patterns}" ]] || return 0
 
     hits="$(git -C "${repo}" grep -n -i -P -f <(echo "${patterns}") HEAD -- || true)"
@@ -151,10 +230,20 @@ cmd="${1:-apply}"
 [[ $# -gt 0 ]] && shift
 
 case "${cmd}" in
+    init) init "$@" ;;
+    overlay)
+        sub="${1:-list}"
+        [[ $# -gt 0 ]] && shift
+        case "${sub}" in
+            add) overlay_add "$@" ;;
+            list) registry ;;
+            *) die "usage: dotfiles overlay {add <name> <url>|list}" ;;
+        esac
+        ;;
     apply) apply "$@" ;;
     diff)
         chezmoi diff "$@"
-        for dir in $(overlays); do overlay_chezmoi "${dir}" diff "$@"; done
+        for name in $(overlays); do overlay_chezmoi "${name}" diff "$@"; done
         ;;
     status) status ;;
     pull) pull ;;
@@ -166,11 +255,10 @@ case "${cmd}" in
     git) each_repo "$@" ;;
     check) check ;;
     *)
-        if [[ -e "${DATA_DIR}/chezmoi-${cmd}/.git" ]]; then
-            overlay_chezmoi "chezmoi-${cmd}" "$@"
+        if overlay_dir "${cmd}" >/dev/null; then
+            overlay_chezmoi "${cmd}" "$@"
         else
-            echo "dotfiles: unknown command or overlay '${cmd}'" >&2
-            exit 2
+            die "unknown command or overlay '${cmd}'"
         fi
         ;;
 esac

@@ -15,8 +15,24 @@ profile_entries() {
       in builtins.concatStringsSep "" (map (n: "${n}\t${els.${n}.originalUrl or ""}\n") (builtins.attrNames els))'
 }
 
+# Remove entries installed from a local flake checkout that no longer exists
+# (e.g. the repo moved); they would otherwise collide with the new entry.
+prune_missing() {
+    local name url path
+    while IFS=$'\t' read -r name url; do
+        [[ "${url}" == git+file://* ]] || continue
+        path="${url#git+file://}"
+        path="${path%%\?*}"
+        if [[ ! -d "${path}" ]]; then
+            echo "Removing nix profile entry ${name}: ${path} no longer exists"
+            nix profile remove "${name}"
+        fi
+    done < <(profile_entries)
+}
+
 sync() {
     local flake_path="$1" flake_url name
+    prune_missing
     flake_url="git+file://${flake_path}"
     name="$(profile_entries | awk -F'\t' -v url="${flake_url}" '$2 == url { print $1; exit }')"
     if [[ -n "${name}" ]]; then

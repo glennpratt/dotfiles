@@ -2,11 +2,12 @@
   description = "Dotfiles: chezmoi source (home/), personal packages, and a dev shell";
 
   # Bootstrap on a fresh machine with only nix:
-  #   nix develop github:glennpratt/dotfiles -c chezmoi init --apply glennpratt
+  #   nix run github:glennpratt/dotfiles#dotfiles -- init
   #
-  # chezmoi (and the git it clones with) come from this flake's lock. Overlays
-  # (e.g. a private work repo) are applied alongside by `dotfiles` (in the base
-  # package set; before that, `nix run github:glennpratt/dotfiles#dotfiles`).
+  # That clones this repo to ~/Code/github.com/glennpratt/dotfiles and runs
+  # chezmoi init --apply, with chezmoi and git from this flake's lock. Overlays
+  # (e.g. a private work repo) are added with `dotfiles overlay add` and
+  # applied alongside by `dotfiles` (nix/dotfiles.sh).
   #
   # packages.default (nix/sets.nix via lib.mkProfile) is installed into the nix
   # profile by home/run_onchange_after_install-nix-packages.sh.tmpl. The dev

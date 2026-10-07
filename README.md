@@ -7,10 +7,12 @@ cross-platform subset.
 ## Bootstrap
 
 ```sh
-nix develop github:glennpratt/dotfiles -c chezmoi init --apply glennpratt
+nix run github:glennpratt/dotfiles#dotfiles -- init
 ```
 
-`chezmoi init` prompts for a name and git email. Packages from
+This clones the repo to `~/Code/github.com/glennpratt/dotfiles` (the
+`git code-clone` layout) and runs `chezmoi init --apply`, which prompts for a
+name and git email and records the source dir. Packages from
 `packages.default` are installed into the nix profile by
 `home/run_onchange_after_install-nix-packages.sh.tmpl`.
 
@@ -23,11 +25,11 @@ nix develop github:glennpratt/dotfiles -c chezmoi init --apply glennpratt
 
 ## Overlays
 
-Machine- or employer-specific config lives in separate chezmoi sources at
-`~/.local/share/chezmoi-<name>`, managed together by the `dotfiles` flake app
+Machine- or employer-specific config lives in separate chezmoi sources,
+registered with `dotfiles overlay add <name> <url>` (cloned to `~/Code/...`,
+listed in `~/.config/dotfiles/overlays`) and managed together by `dotfiles`
 (`nix/dotfiles.sh`: apply, diff, status, pull, push, git). Its tools are pinned
-by this flake. It is in the `base` package set and both repos' devshells; before
-the profile exists, use `nix run github:glennpratt/dotfiles#dotfiles -- apply`.
+by this flake; it is in the `base` package set and both repos' devshells.
 Each source applies on its own, in any order. No target is owned by two
 sources (`dotfiles check`). Overlays contribute in two ways.
 

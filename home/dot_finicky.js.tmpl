@@ -1,15 +1,19 @@
 // https://github.com/johnste/finicky/wiki/Configuration-(v4)
 {{- /*
-  Overlay sources (~/.local/share/chezmoi-*) contribute fragments/finicky/*.js,
-  each a single JS array literal of handlers, inlined here ahead of the rules
-  below. Read from the overlay checkouts, so no apply order is needed.
+  Registered overlays (.chezmoitemplates/overlay-dirs) contribute
+  fragments/finicky/*.js, each a single JS array literal of handlers, inlined
+  here ahead of the rules below. Read from the overlay checkouts, so no apply
+  order is needed.
 */}}
-{{- $overlays := get . "overlayGlob" | default (joinPath .chezmoi.homeDir ".local/share/chezmoi-*") }}
+{{- $fragments := list }}
+{{- range includeTemplate "overlay-dirs" . | splitList "\n" | compact }}
+{{-   $fragments = concat $fragments (glob (joinPath . "fragments/finicky/*.js")) }}
+{{- end }}
 export default {
   // No profile: let Chrome open in whatever window/profile was last active
   defaultBrowser: "Google Chrome",
   handlers: [
-{{- range glob (joinPath $overlays "fragments/finicky/*.js") }}
+{{- range $fragments }}
     // {{ . | base }} from {{ . | dir | dir | dir | base }}
     ...(
       {{ include . | trim | replace "\n" "\n      " }}

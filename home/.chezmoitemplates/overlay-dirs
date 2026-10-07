@@ -1,0 +1,14 @@
+{{- /*
+  Checkout dirs of registered overlays, one per line, read from
+  ~/.config/dotfiles/overlays ("<name> <dir>" per line; see `dotfiles overlay`).
+  Set data `overlaysFile` to read another registry (e.g. in tests).
+*/ -}}
+{{- $file := get . "overlaysFile" | default (joinPath .chezmoi.homeDir ".config/dotfiles/overlays") -}}
+{{- if stat $file -}}
+{{-   range include $file | splitList "\n" -}}
+{{-     $line := trim . -}}
+{{-     if and $line (not (hasPrefix "#" $line)) }}
+{{ index (regexSplit "\\s+" $line 2) 1 }}
+{{-     end -}}
+{{-   end -}}
+{{- end -}}

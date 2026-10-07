@@ -3,6 +3,9 @@
 {{- $email := promptStringOnce . "email" "Default git email" "glennpratt@gmail.com" -}}
 {{- $isWSL := and (eq .chezmoi.os "linux") (.chezmoi.kernel.osrelease | lower | contains "microsoft") -}}
 
+# Where `chezmoi init --source ...` (or `dotfiles init`) cloned this repo.
+sourceDir = {{ .chezmoi.workingTree | quote }}
+
 [data]
 name = {{ $name | quote }}
 email = {{ $email | quote }}
