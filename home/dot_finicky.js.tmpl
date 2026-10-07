@@ -14,7 +14,7 @@ export default {
   defaultBrowser: "Google Chrome",
   handlers: [
 {{- range $fragments }}
-    // {{ . | base }} from {{ . | dir | dir | dir | base }}
+    // {{ . | replace $.chezmoi.homeDir "~" }}
     ...(
       {{ include . | trim | replace "\n" "\n      " }}
     ),
