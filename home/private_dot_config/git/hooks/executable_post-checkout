@@ -33,7 +33,22 @@ if [[ "${GIT_DIR}" == "${GIT_COMMON_DIR}" ]]; then
 fi
 
 CURRENT_WT="$(git rev-parse --show-toplevel 2>/dev/null)"
-MAIN_WT="$(git worktree list --porcelain 2>/dev/null | head -n 1 | sed 's/^worktree //')"
+
+# The main worktree: in a non-bare repository, the parent of the common git
+# directory (or core.worktree). `git worktree list` order isn't relied on;
+# it's only the fallback.
+MAIN_WT=""
+if [[ "$(git config --bool core.bare 2>/dev/null)" != "true" ]]; then
+    MAIN_WT="$(git config --path core.worktree 2>/dev/null || dirname "${GIT_COMMON_DIR}")"
+fi
+if [[ -z "${MAIN_WT}" || ! -d "${MAIN_WT}" ]]; then
+    while IFS= read -r line; do
+        if [[ "${line}" =~ ^worktree\ (.*)$ ]]; then
+            MAIN_WT="${BASH_REMATCH[1]}"
+            break
+        fi
+    done < <(git worktree list --porcelain 2>/dev/null || true)
+fi
 
 copy_envrc_local() {
     # If .envrc.local already exists in the new worktree, do not overwrite
@@ -55,7 +70,7 @@ copy_envrc_local() {
                     break
                 fi
             fi
-        done < <(git worktree list --porcelain 2>/dev/null)
+        done < <(git worktree list --porcelain 2>/dev/null || true)
     fi
 
     if [[ -n "${source_file}" ]]; then

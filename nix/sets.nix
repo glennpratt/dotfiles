@@ -52,6 +52,7 @@ in
     go
     golangci-lint
     graphviz
+    jujutsu
     pythonEnv
     ruff
     semgrep

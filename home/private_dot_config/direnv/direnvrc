@@ -35,19 +35,32 @@ get_project_path() {
     echo "$path"
 }
 
-# Run 'op inject' on a template file, bounded to 60s where a timeout is available.
+# Run 'op inject' on one or more template files, concatenated into a single template so
+# 1Password authorizes once, bounded to 60s where a timeout is available.
 # macOS has neither GNU 'timeout' nor 'gtimeout' unless coreutils is installed
 # (or a flake devshell puts it on PATH), so fall back to running unbounded.
-# Note: 'op inject' needs -i for a file; a plain '< file' redirect is not
-# recognized as stdin data by op on macOS.
+# Note: on macOS 'op inject' needs -i for a file; a plain '< file' redirect is
+# not recognized as stdin data by op there. Elsewhere, feed the file on stdin:
+# on Linux 'op' may be an SSH shim that runs op on the Mac, where a local -i
+# path doesn't exist but stdin is forwarded.
 op_inject_file() {
-    local env_file="$1"
+    local -a timeout_cmd=()
     if command -v timeout &>/dev/null; then
-        timeout 60s op inject -i "$env_file"
+        timeout_cmd=(timeout 60s)
     elif command -v gtimeout &>/dev/null; then
-        gtimeout 60s op inject -i "$env_file"
+        timeout_cmd=(gtimeout 60s)
+    fi
+    if [[ "$(uname)" == "Darwin" ]]; then
+        # Templates hold only op:// references, so the joined copy on disk carries no secrets.
+        local template rc
+        template=$(mktemp) || return 1
+        cat "$@" > "$template"
+        ${timeout_cmd[@]+"${timeout_cmd[@]}"} op inject -i "$template"
+        rc=$?
+        rm -f "$template"
+        return $rc
     else
-        op inject -i "$env_file"
+        cat "$@" | ${timeout_cmd[@]+"${timeout_cmd[@]}"} op inject
     fi
 }
 
@@ -55,27 +68,30 @@ op_inject_file() {
 # Uses memfd_create via python3 to store secrets in RAM
 # This persists across direnv reloads because the keeper process remains alive
 op_inject_cached() {
-    local env_file="$1"
-    if [[ ! -f "$env_file" ]]; then
-        return 1
-    fi
+    local -a env_files=("$@")
+    local env_file
+    for env_file in "${env_files[@]}"; do
+        [[ -f "$env_file" ]] || return 1
+    done
+    local names
+    names=$(basename -a "${env_files[@]}" | paste -sd+ -)
 
     # Ensure dependencies are available
     if ! command -v sha256sum &>/dev/null || ! command -v python3 &>/dev/null; then
-        op_inject_file "$env_file"
+        op_inject_file "${env_files[@]}"
         return $?
     fi
 
-    # Unique identifier based on absolute path, command, and file content
+    # Unique identifier based on absolute paths, command, and file content
     local abs_path
-    abs_path=$(realpath "$env_file")
+    abs_path=$(realpath "${env_files[@]}" | paste -sd' ' -)
 
     # We include the command name in the key to avoid collisions between different tools
     local cmd_name="op-inject"
     local path_id
     path_id=$(echo -n "$abs_path" | sha256sum | awk '{print $1}' | cut -c1-16)
     local content_hash
-    content_hash=$(sha256sum "$env_file" | awk '{print $1}' | cut -c1-16)
+    content_hash=$(cat "${env_files[@]}" | sha256sum | awk '{print $1}' | cut -c1-16)
 
     # The keeper name identifies this specific command, file path, and content
     local keeper_name="keeper-${cmd_name}-${path_id}-${content_hash}${DIRENV_OP_CACHE_SIMULATE:+-sim}"
@@ -97,14 +113,14 @@ op_inject_cached() {
         local fd
         fd=$(ls -l "/proc/$keeper_pid/fd/" 2>/dev/null | grep "memfd:op_cache" | awk '{print $9}' | head -n 1)
         if [[ -n "$fd" ]]; then
-            log_status "Using cached 1Password secrets for $(basename "$env_file") (PID: $keeper_pid)"
+            log_status "Using cached 1Password secrets for ${names} (PID: $keeper_pid)"
             if [[ "${DIRENV_OP_CACHE_SIMULATE:-}" == "1" ]]; then
                 touch "/tmp/direnv-op-cache-hit-$(id -un)-${path_id}"
             fi
             cat "/proc/$keeper_pid/fd/$fd"
             return 0
         fi
-        log_status "Cache found but inaccessible for $(basename "$env_file"), refreshing..."
+        log_status "Cache found but inaccessible for ${names}, refreshing..."
         kill "$keeper_pid" 2>/dev/null
     fi
 
@@ -115,16 +131,16 @@ op_inject_cached() {
         kill $old_pids 2>/dev/null
     fi
 
-    log_status "Injecting 1Password secrets for $(basename "$env_file")..."
+    log_status "Injecting 1Password secrets for ${names}..."
     # Perform the injection with a 60s timeout
     local injected
     if [[ "${DIRENV_OP_CACHE_SIMULATE:-}" == "1" ]]; then
         # Create a trace file for the simulation to verify the cache is being bypassed
         touch "/tmp/direnv-op-cache-inject-$(id -un)-${path_id}"
-        injected=$(cat "$env_file")
+        injected=$(cat "${env_files[@]}")
     else
-        if ! injected=$(op_inject_file "$env_file"); then
-            log_status "Warning: 'op inject -i \"$env_file\"' status $?"
+        if ! injected=$(op_inject_file "${env_files[@]}"); then
+            log_status "Warning: 'op inject ${names}' status $?"
             return 1
         fi
         # Safety check: if secrets are still op:// references, treat as failure
@@ -163,17 +179,22 @@ op_inject_cached() {
 # as the environment variables they produce.
 # Clear all: while security delete-generic-password -s direnv-op-cache; do :; done
 op_inject_keychain_cached() {
-    local env_file="$1"
-    if [[ ! -f "$env_file" ]]; then
-        return 1
-    fi
+    local -a env_files=("$@")
+    local env_file
+    for env_file in "${env_files[@]}"; do
+        [[ -f "$env_file" ]] || return 1
+    done
+    local names
+    names=$(basename -a "${env_files[@]}" | paste -sd+ -)
 
+    # Keyed like op_inject_cached; for a single file the key and hash match the
+    # earlier one-file version, so existing entries stay valid.
     local security=/usr/bin/security service=direnv-op-cache
     local ttl="${DIRENV_OP_CACHE_TTL:-43200}"
     local abs_path path_id content_hash now
-    abs_path=$(realpath "$env_file")
+    abs_path=$(realpath "${env_files[@]}" | paste -sd' ' -)
     path_id=$(printf '%s' "$abs_path" | shasum -a 256 | cut -c1-16)
-    content_hash=$(shasum -a 256 < "$env_file" | cut -c1-16)
+    content_hash=$(cat "${env_files[@]}" | shasum -a 256 | cut -c1-16)
     now=$(date +%s)
 
     # Item "<path_id>.0" holds "<content_hash> <created> <chunks>", items
@@ -193,17 +214,17 @@ op_inject_keychain_cached() {
                 payload+="$chunk"
             done
             if [[ -n "$payload" ]]; then
-                log_status "Using cached 1Password secrets for $(basename "$env_file") (keychain)"
+                log_status "Using cached 1Password secrets for $names (keychain)"
                 printf '%s' "$payload" | /usr/bin/base64 -d
                 return 0
             fi
         fi
     fi
 
-    log_status "Injecting 1Password secrets for $(basename "$env_file")..."
+    log_status "Injecting 1Password secrets for $names..."
     local injected
-    if ! injected=$(op_inject_file "$env_file"); then
-        log_status "Warning: 'op inject -i \"$env_file\"' status $?"
+    if ! injected=$(op_inject_file "${env_files[@]}"); then
+        log_status "Warning: 'op inject $names' status $?"
         return 1
     fi
     # Safety check: if secrets are still op:// references, treat as failure
@@ -214,7 +235,7 @@ op_inject_keychain_cached() {
 
     # Write payload chunks first and the header last, so a reader never sees a
     # header pointing at a partial payload.
-    local b64 cmds="" chunk_size=2800 label="direnv op cache: $(basename "$env_file")"
+    local b64 cmds="" chunk_size=2800 label="direnv op cache: $names"
     b64=$(printf '%s' "$injected" | /usr/bin/base64 | tr -d '\n')
     n=$(( (${#b64} + chunk_size - 1) / chunk_size ))
     for (( i = 1; i <= n; i++ )); do
@@ -222,7 +243,7 @@ op_inject_keychain_cached() {
     done
     cmds+="add-generic-password -U -s $service -a $path_id.0 -l \"$label\" -j \"$abs_path\" -w \"$content_hash $now $n\""$'\n'
     if ! printf '%s' "$cmds" | "$security" -i >/dev/null 2>&1; then
-        log_status "Warning: failed to write keychain cache for $(basename "$env_file")"
+        log_status "Warning: failed to write keychain cache for $names"
     fi
     # Drop leftover chunks from an earlier, larger payload
     i=$(( n + 1 ))
@@ -286,37 +307,48 @@ load_env_variant() {
     fi
 
     if [[ -n "$env_file" ]]; then
+        # common.env beside the variant is shared by every variant, and goes first so the
+        # variant can override it, in the same single 'op inject'.
+        local -a env_files=("$env_file")
+        local common_env_file
+        common_env_file="$(dirname "$env_file")/common.env"
+        if [[ -f "$common_env_file" ]]; then
+            env_files=("$common_env_file" "$env_file")
+        fi
+
         # Use 1Password 'op inject' to resolve secret references
         if command -v op &>/dev/null; then
             local injected
             # Opt-in to caching: login keychain on macOS, in-memory on Linux
             if [[ "${DIRENV_USE_OP_CACHE:-}" == "1" ]] && [[ "$(uname)" == "Darwin" ]]; then
-                if injected=$(op_inject_keychain_cached "$env_file"); then
+                if injected=$(op_inject_keychain_cached "${env_files[@]}"); then
                     eval "$injected"
                 else
-                    log_status "Warning: 'op_inject_keychain_cached \"$env_file\"' status $?"
+                    log_status "Warning: 'op_inject_keychain_cached ${env_files[*]}' status $?"
                     exit 1
                 fi
             elif [[ "${DIRENV_USE_OP_CACHE:-}" == "1" ]] && command -v python3 &>/dev/null && [[ "$(uname)" == "Linux" ]]; then
-                if injected=$(op_inject_cached "$env_file"); then
+                if injected=$(op_inject_cached "${env_files[@]}"); then
                     eval "$injected"
                 else
-                    log_status "Warning: 'op_inject_cached \"$env_file\"' status $?"
+                    log_status "Warning: 'op_inject_cached ${env_files[*]}' status $?"
                     exit 1
                 fi
             else
                 # Default: no caching (with 60s timeout where available)
-                if injected=$(op_inject_file "$env_file"); then
+                if injected=$(op_inject_file "${env_files[@]}"); then
                     eval "$injected"
                 else
-                    log_status "Warning: 'op inject -i \"$env_file\"' status $?"
+                    log_status "Warning: 'op inject ${env_files[*]}' status $?"
                     exit 1
                 fi
             fi
         else
             # Fallback: source directly (secrets won't be resolved)
             log_status "Warning: 1Password CLI not found, loading env file without secret injection"
-            source "$env_file"
+            for env_file in "${env_files[@]}"; do
+                source "$env_file"
+            done
         fi
     fi
 }

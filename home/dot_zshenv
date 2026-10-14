@@ -1,3 +1,7 @@
+# Environment for every shell (login or not, interactive or not), e.g. nix on
+# Linux hosts where nothing else sources it.
+[ -r "$HOME/.config/shell/env" ] && . "$HOME/.config/shell/env"
+
 # Sourced before /etc/zprofile, which is where macOS runs path_helper.
 # ~/.zprofile uses this snapshot to undo path_helper's PATH reordering.
 __PATH_BEFORE_PATH_HELPER="$PATH"

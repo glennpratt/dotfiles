@@ -1,0 +1,8 @@
+# Sourced by every shell (~/.zshenv, ~/.bashrc, ~/.profile): environment that
+# even non-interactive shells need. Keep it cheap and idempotent.
+
+# Multi-user nix on Linux installs its profile script here; macOS's nix
+# installer hooks /etc/zshrc instead.
+if [ -r /etc/profile.d/nix.sh ]; then
+    . /etc/profile.d/nix.sh
+fi

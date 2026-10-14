@@ -23,6 +23,7 @@
 	stash-untracked = !git ls-files --others --exclude-standard | xargs -r git stash push -u --
     wt = "!~/.config/git/git-wt.sh"
     code-clone = "!~/.config/git/git-code-clone.sh"
+    grame = "!f() { git grep -n \"$1\" | while IFS=: read -r file line content; do git blame -f -L \"$line\",\"$line\" \"$file\"; done }; f"
 [init]
 	defaultBranch = main
 # Drop-ins from overlays (e.g. work). Missing files are silently ignored.
