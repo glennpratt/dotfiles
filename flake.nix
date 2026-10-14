@@ -89,12 +89,16 @@
 
       devShells = forAllSystems (system: pkgs: {
         default = pkgs.mkShellNoCC {
-          packages = (with pkgs; [
+          # Not `dotfiles`: overlays reuse this shell from their (possibly stale)
+          # lock of this flake, and direnv caches it. The profile's copy is
+          # rebuilt from the local checkout on apply; test edits with
+          # `nix run .#dotfiles -- ...`.
+          packages = with pkgs; [
             chezmoi
             git
             shellcheck
             shfmt
-          ]) ++ [ pkgs.dotfiles ];
+          ];
         };
       });
     };

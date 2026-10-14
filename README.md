@@ -29,7 +29,8 @@ Machine- or employer-specific config lives in separate chezmoi sources,
 registered with `dotfiles overlay add <name> <url>` (cloned to `~/Code/...`,
 listed in `~/.config/dotfiles/overlays`) and managed together by `dotfiles`
 (`nix/dotfiles.sh`: apply, diff, status, pull, push, git). Its tools are pinned
-by this flake; it is in the `base` package set and both repos' devshells.
+by this flake; it is installed with the `base` package set (try local edits
+with `nix run .#dotfiles -- ...`).
 When an overlay's flake locks this repo at an older commit, `dotfiles status`
 and `apply` say so, and `dotfiles apply --bump` updates and commits that lock
 (after the base is pushed) before applying.

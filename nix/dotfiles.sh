@@ -3,7 +3,8 @@
 #
 # Packaged by nix/overlay.nix with writeShellApplication (which adds the shebang
 # and strict mode, and puts pinned tools first on PATH). Installed via the base
-# package set and provided by both repos' devshells.
+# package set (upgraded on apply when this file changes); try local edits with
+# `nix run .#dotfiles -- ...`.
 #
 # Repos are checked out like `git code-clone` does: ~/Code/<host>/<path>.
 # Overlays are extra chezmoi sources registered in ~/.config/dotfiles/overlays
