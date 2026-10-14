@@ -30,6 +30,9 @@ registered with `dotfiles overlay add <name> <url>` (cloned to `~/Code/...`,
 listed in `~/.config/dotfiles/overlays`) and managed together by `dotfiles`
 (`nix/dotfiles.sh`: apply, diff, status, pull, push, git). Its tools are pinned
 by this flake; it is in the `base` package set and both repos' devshells.
+When an overlay's flake locks this repo at an older commit, `dotfiles status`
+and `apply` say so, and `dotfiles apply --bump` updates and commits that lock
+(after the base is pushed) before applying.
 Each source applies on its own, in any order. No target is owned by two
 sources (`dotfiles check`). Overlays contribute in two ways.
 

@@ -77,7 +77,7 @@
     "chat.agent.maxRequests": 100,
     "git.detectWorktrees": false,
     "workbench.view.alwaysShowHeaderActions": true,
-    "python.languageServer": "Pylance",
+    "python.languageServer": "None",
     "python.analysis.languageServerMode": "full",
     "http.systemCertificatesNode": true,
     "files.readonlyInclude": {

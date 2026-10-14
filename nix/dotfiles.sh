@@ -16,7 +16,10 @@
 #                                    chezmoi init --apply it
 #   dotfiles overlay add <name> <url>  clone and register an overlay
 #   dotfiles overlay list            registered overlays
-#   dotfiles apply [args]            apply base and every overlay
+#   dotfiles apply [--bump] [args]   apply base and every overlay; --bump (or
+#                                    DOTFILES_BUMP=1) first runs `bump`
+#   dotfiles bump                    update overlay flake inputs that pin the
+#                                    base to the base's pushed HEAD, commit flake.lock
 #   dotfiles diff [args]             chezmoi diff every source
 #   dotfiles status                  git and chezmoi status of every source
 #   dotfiles pull                    git pull --ff-only every repo
@@ -30,6 +33,10 @@
 # Bootstrap with nothing but nix:
 #   nix run github:glennpratt/dotfiles#dotfiles -- init
 #   dotfiles overlay add work <url> && dotfiles apply
+#
+# Overlay flakes usually take the base as an input (github:<owner>/<repo>).
+# When that lock pins a different commit than the local base HEAD, `status`
+# and `apply` say so; `bump` fixes it once the base is pushed.
 #
 # The base repo is public. Before pushing it, `push` greps its tree and
 # outgoing commit metadata for the patterns (extended regexes, `\b` allowed,
@@ -166,12 +173,23 @@ check() {
 }
 
 apply() {
-    local name
-    check
-    chezmoi apply "$@"
-    for name in $(overlays); do
-        overlay_chezmoi "${name}" apply "$@"
+    local name do_bump="${DOTFILES_BUMP:-}" args=()
+    for arg in "$@"; do
+        if [[ "${arg}" == "--bump" ]]; then
+            do_bump=1
+        else
+            args+=("${arg}")
+        fi
     done
+    check
+    if [[ -n "${do_bump}" ]]; then
+        bump
+    fi
+    chezmoi apply "${args[@]}"
+    for name in $(overlays); do
+        overlay_chezmoi "${name}" apply "${args[@]}"
+    done
+    lock_notices
 }
 
 status() {
@@ -184,6 +202,7 @@ status() {
         git -C "$(overlay_dir "${name}")" status --short --branch
         overlay_chezmoi "${name}" status
     done
+    lock_notices
 }
 
 # Fail if the base repo's tree or unpushed commit metadata matches any overlay
@@ -211,6 +230,93 @@ guard_public() {
         echo "${hits}" >&2
         return 1
     fi
+}
+
+# "<input> <locked rev>" for each of an overlay's flake inputs that locks the
+# base repo from GitHub.
+base_inputs() {
+    local name="$1" lock origin owner repo
+    lock="$(overlay_dir "${name}")/flake.lock"
+    [[ -r "${lock}" ]] || return 0
+    origin="$(git -C "$(base_repo)" remote get-url origin 2>/dev/null)" || return 0
+    [[ "${origin}" =~ github\.com[:/]([^/]+)/([^/]+)$ ]] || return 0
+    owner="${BASH_REMATCH[1],,}"
+    repo="${BASH_REMATCH[2],,}"
+    repo="${repo%.git}"
+    jq -r --arg owner "${owner}" --arg repo "${repo}" '
+      .nodes | to_entries[]
+      | select(.value.original.type == "github"
+               and (.value.original.owner | ascii_downcase) == $owner
+               and (.value.original.repo | ascii_downcase) == $repo)
+      | "\(.key) \(.value.locked.rev)"' "${lock}"
+}
+
+# How a locked base rev relates to the local base checkout:
+# current | behind (local base is older; pull it) | unpushed | bumpable
+lock_state() {
+    local rev="$1" base head
+    base="$(base_repo)"
+    head="$(git -C "${base}" rev-parse HEAD)"
+    if [[ "${rev}" == "${head}" ]]; then
+        echo current
+    elif git -C "${base}" merge-base --is-ancestor "${head}" "${rev}" 2>/dev/null; then
+        echo behind
+    elif ! git -C "${base}" merge-base --is-ancestor HEAD '@{u}' 2>/dev/null; then
+        echo unpushed
+    else
+        echo bumpable
+    fi
+}
+
+# Print a notice per overlay input whose base lock differs from the local base.
+lock_notices() {
+    local name input rev state head
+    head="$(git -C "$(base_repo)" rev-parse --short HEAD)"
+    for name in $(overlays); do
+        while read -r input rev; do
+            state="$(lock_state "${rev}")"
+            case "${state}" in
+                current) ;;
+                behind) echo "dotfiles: ${name}: ${input} pins ${rev:0:7}, newer than the local base (${head}); run \`dotfiles pull\`" >&2 ;;
+                unpushed) echo "dotfiles: ${name}: ${input} pins ${rev:0:7}, local base is at unpushed ${head}; run \`dotfiles push\`, then \`dotfiles bump\`" >&2 ;;
+                bumpable) echo "dotfiles: ${name}: ${input} pins ${rev:0:7}, local base is at ${head}; run \`dotfiles bump\` (or \`dotfiles apply --bump\`)" >&2 ;;
+            esac
+        done < <(base_inputs "${name}")
+    done
+}
+
+bump() {
+    local name dir input rev state failed=0
+    for name in $(overlays); do
+        dir="$(overlay_dir "${name}")"
+        while read -r input rev; do
+            state="$(lock_state "${rev}")"
+            case "${state}" in
+                current) continue ;;
+                behind)
+                    echo "dotfiles: ${name}: not moving ${input} back to the older local base; run \`dotfiles pull\`" >&2
+                    continue
+                    ;;
+                unpushed)
+                    echo "dotfiles: ${name}: base has unpushed commits; run \`dotfiles push\` first" >&2
+                    failed=1
+                    continue
+                    ;;
+            esac
+            if ! git -C "${dir}" diff --quiet HEAD -- flake.lock; then
+                echo "dotfiles: ${name}: flake.lock has uncommitted changes; not bumping" >&2
+                failed=1
+                continue
+            fi
+            header "${dir}"
+            (cd "${dir}" && nix flake update "${input}")
+            if ! git -C "${dir}" diff --quiet HEAD -- flake.lock; then
+                rev="$(jq -r --arg input "${input}" '.nodes[$input].locked.rev' "${dir}/flake.lock")"
+                git -C "${dir}" commit -m "flake: bump ${input} to ${rev:0:7}" -- flake.lock
+            fi
+        done < <(base_inputs "${name}")
+    done
+    return "${failed}"
 }
 
 push() {
@@ -250,8 +356,9 @@ case "${cmd}" in
     push) push "$@" ;;
     update)
         pull
-        apply
+        apply "$@"
         ;;
+    bump) bump ;;
     git) each_repo "$@" ;;
     check) check ;;
     *)
