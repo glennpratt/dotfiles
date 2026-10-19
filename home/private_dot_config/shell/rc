@@ -46,9 +46,14 @@ elif [ -n "$BASH_VERSION" ]; then
   fi
 fi
 
-eval "$(direnv hook $_current_shell)"
-eval "$(starship init $_current_shell)"
-eval "$(atuin init $_current_shell)"
+# Prompt and hooks are for a human at a prompt. Skip them while VS Code runs
+# this shell only to read its environment: each is a nix binary to exec, and
+# right after login that can push VS Code past its resolution timeout.
+if [ -z "${VSCODE_RESOLVING_ENVIRONMENT:-}" ]; then
+  eval "$(direnv hook $_current_shell)"
+  eval "$(starship init $_current_shell)"
+  eval "$(atuin init $_current_shell)"
+fi
 unset _current_shell
 
 # Unset DEVELOPER_DIR if it points to a non-existent Nix store path (stale from parent env)

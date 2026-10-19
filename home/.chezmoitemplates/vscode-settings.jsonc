@@ -115,6 +115,11 @@
     "makefile.configureOnOpen": false,
     "workbench.editor.editorActionsLocation": "titleBar",
     "chat.agentsHandoffTip.mode": "hidden",
+    "chat.agentsWindowBanner.enabled": false,
     "chat.agentHost.customTerminalTool.enabled": true,
-    "claudeCode.preferredLocation": "panel"
+    "claudeCode.preferredLocation": "panel",
+    // macOS: VS Code reads PATH (nix, direnv) from an interactive login shell.
+    // Right after login that shell can exceed the 10s default, and VS Code then
+    // runs the whole session on launchd's bare environment.
+    "application.shellEnvironmentResolutionTimeout": 60
 }
