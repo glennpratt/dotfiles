@@ -1,6 +1,7 @@
 # Packages defined in this repo, for consumers to add to their own nixpkgs.
 final: prev: {
   diffx = final.callPackage ./pkgs/diffx.nix { };
+  sofka = final.callPackage ./pkgs/sofka.nix { };
 
   # Manage the base and overlay chezmoi sources together (see dotfiles.sh).
   dotfiles = final.writeShellApplication {

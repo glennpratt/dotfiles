@@ -73,5 +73,6 @@ in
     kubernetes-helm
     kubernetes-helmPlugins.helm-unittest
     kustomize
+    sofka
   ];
 }

@@ -58,7 +58,7 @@
           default = self.lib.mkProfile pkgs {
             paths = sets.base ++ sets.dev;
           };
-          inherit (pkgs) diffx dotfiles;
+          inherit (pkgs) diffx dotfiles sofka;
           profile-sync = pkgs.writeShellApplication {
             name = "profile-sync";
             runtimeInputs = [ pkgs.gawk ]; # nix itself comes from PATH
