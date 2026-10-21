@@ -1,0 +1,9 @@
+#!/bin/sh
+# Merge managed keys into ~/.claude/settings.json, leaving the rest (permissions,
+# model, etc.) as Claude Code wrote it.
+#
+# attribution: empty strings drop the Co-Authored-By / "Generated with" text from
+# commits and PRs.
+in=$(cat)
+[ -n "$in" ] || in='{}'
+printf '%s' "$in" | jq '.attribution = {commit: "", pr: ""}'
