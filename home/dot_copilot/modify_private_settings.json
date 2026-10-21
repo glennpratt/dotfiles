@@ -1,0 +1,8 @@
+#!/bin/sh
+# Merge managed keys into ~/.copilot/settings.json (Copilot CLI and the agent
+# runtime VS Code embeds), leaving the rest as the app wrote it.
+#
+# includeCoAuthoredBy: false stops the "Co-authored-by: Copilot" trailer.
+in=$(cat)
+[ -n "$in" ] || in='{}'
+printf '%s' "$in" | jq '.includeCoAuthoredBy = false'

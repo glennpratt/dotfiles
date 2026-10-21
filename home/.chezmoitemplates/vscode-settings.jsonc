@@ -36,6 +36,8 @@
     "editor.minimap.enabled": false,
     "terminal.integrated.allowChords": false,
     "github.copilot.nextEditSuggestions.enabled": true,
+    // Never add a "Co-authored-by: Copilot" trailer to commits.
+    "git.addAICoAuthor": "off",
     "docker.extension.enableComposeLanguageServer": false,
     "diffEditor.codeLens": true,
     "go.gopath": "",
